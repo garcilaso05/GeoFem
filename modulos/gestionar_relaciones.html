@@ -1,0 +1,64 @@
+<!-- Modulo: Gestionar Relaciones -->
+<h2>Gestionar relaciones n:m</h2>
+
+<div class="content-container">
+  <h3>Crear relación</h3>
+  <div class="form-row">
+    <div class="form-group">
+      <label for="relTable1">Tabla 1:</label>
+      <select id="relTable1">
+        <option value="">Selecciona tabla...</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label for="relTable2">Tabla 2:</label>
+      <select id="relTable2">
+        <option value="">Selecciona tabla...</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <button id="crearRelacionBtn" class="btn-primary">Crear relación</button>
+    </div>
+  </div>
+  <div id="relacionMsg"></div>
+</div>
+
+<!-- Nueva sección: Gestionar relaciones existentes mediante tabla intermedia -->
+<div class="content-container">
+  <h3>Gestionar relaciones existentes n:m</h3>
+  <div class="form-row">
+    <div class="form-group">
+      <label for="relJoinTable">Tabla intermedia:</label>
+      <select id="relJoinTable">
+        <option value="">Selecciona tabla intermedia...</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <button id="relSwapBtn" class="btn-secondary" disabled>Intercambiar columnas</button>
+    </div>
+  </div>
+  
+  <div style="display: flex; gap: 24px; margin-top: 20px;">
+    <div class="content-container" style="flex: 1; min-width: 200px;">
+      <div id="relLeftList" style="max-height: 260px; overflow: auto;"></div>
+    </div>
+    <div class="content-container" style="flex: 1; min-width: 200px;">
+      <div id="relRightList" style="max-height: 260px; overflow: auto;"></div>
+    </div>
+  </div>
+  
+  <div class="form-group">
+    <button id="relCreateRelsBtn" class="btn-primary" disabled>Crear relaciones</button>
+  </div>
+  <div id="relMgmtStatus"></div>
+</div>
+
+<!-- Sección para aplicar RLS a todas las tablas -->
+<div class="content-container">
+  <h3>Administración de RLS</h3>
+  <p>Aplica políticas RLS (Row Level Security) a todas las tablas que no las tengan:</p>
+  <div class="form-group">
+    <button id="applyRlsAllBtn" class="btn-secondary">Aplicar RLS a todas las tablas</button>
+  </div>
+  <div id="rlsAllMsg"></div>
+</div>

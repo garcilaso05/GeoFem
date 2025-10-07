@@ -1,0 +1,32 @@
+<h2>Visualización de Datos</h2>
+
+<div class="form-row">
+  <div class="form-group">
+    <label for="tableSelect">Selecciona una tabla:</label>
+    <select id="tableSelect">
+      <option value="">Selecciona una tabla...</option>
+    </select>
+  </div>
+  <div class="form-group">
+    <button id="loadDataBtn" class="btn-primary" disabled>Cargar Datos</button>
+  </div>
+</div>
+
+<div id="dataContainer" class="data-container" style="display: none;">
+  <!-- Aquí se mostrará la tabla con los datos -->
+</div>
+
+<!-- Tooltip flotante para mostrar referencias de claves foráneas -->
+<div id="foreignKeyTooltip" style="
+  position: absolute;
+  background: #333;
+  color: white;
+  padding: 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  display: none;
+  z-index: 1000;
+  max-width: 300px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+">
+</div>

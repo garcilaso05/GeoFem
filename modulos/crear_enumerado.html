@@ -1,0 +1,22 @@
+<h2>Crear Enumerado (ENUM)</h2>
+
+<form id="formCrearEnum">
+  <div class="form-group">
+    <label for="enumName">Nombre del enumerado:</label>
+    <input type="text" id="enumName" placeholder="Ej: estados" required>
+  </div>
+  
+  <div class="content-container">
+    <label>Elementos del enumerado:</label>
+    <div id="enumElements"></div>
+    <div class="form-group">
+      <button type="button" id="addEnumElementBtn" class="btn-secondary">Añadir elemento</button>
+    </div>
+  </div>
+  
+  <div class="form-group">
+    <button type="submit" class="btn-primary">Crear enumerado en Supabase</button>
+  </div>
+</form>
+
+<div id="enumStatus"></div>

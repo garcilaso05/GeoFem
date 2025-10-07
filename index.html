@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Gestor SQL Supabase</title>
+  <link rel="stylesheet" href="estilos.css">
+  <style>
+    body { font-family: sans-serif; margin: 0; }
+    header { background: #333; color: white; padding: 10px; }
+    nav { display: flex; gap: 10px; margin-top: 5px; }
+    nav button { background: #555; color: white; border: none; padding: 8px 12px; cursor: pointer; border-radius: 4px; }
+    nav button:hover { background: #777; }
+    .nav-right { margin-left: auto; display: flex; gap: 10px; }
+    #content { padding: 20px; }
+  </style>
+  <script type="module">
+    // Bloqueo de navegación para evitar múltiples cargas
+    let navLocked = false;
+    function setNavEnabled(enabled) {
+      const nav = document.querySelector('header nav');
+      if (!nav) return;
+      Array.from(nav.querySelectorAll('button')).forEach(btn => btn.disabled = !enabled);
+      navLocked = !enabled;
+    }
+    async function loadModule(moduleHtml, moduleScript) {
+      if (navLocked) return;
+      setNavEnabled(false);
+      // Cargar el HTML
+      const res = await fetch(moduleHtml);
+      const html = await res.text();
+      document.getElementById("content").innerHTML = html;
+      // Eliminar scripts de módulo anteriores
+      document.querySelectorAll('script[data-module]').forEach(s => s.remove());
+      // Cargar el script del módulo (forzando recarga)
+      if (moduleScript) {
+        const script = document.createElement("script");
+        script.type = "module";
+        script.src = moduleScript + '?v=' + Date.now();
+        script.setAttribute('data-module', 'true');
+        script.onload = () => setNavEnabled(true);
+        document.body.appendChild(script);
+      } else {
+        setNavEnabled(true);
+      }
+    }
+
+    // Cargar por defecto el módulo de bienvenida
+    window.addEventListener("DOMContentLoaded", () => {
+      loadModule("modulos/bienvenida.html", "modulos/bienvenida.js");
+    });
+
+    window.loadModule = loadModule;
+  </script>
+</head>
+<body>
+  <header>
+    <h1>Gestor SQL Supabase</h1>
+    <nav>
+      <button onclick="loadModule('modulos/bienvenida.html','modulos/bienvenida.js')">Bienvenida</button>
+      <div class="nav-right">
+        <button onclick="loadModule('modulos/subir_archivo.html','modulos/subir_archivo.js')">Acceder</button>
+        <button onclick="loadModule('modulos/crear_llave.html','modulos/crear_llave.js')">Registarse</button>
+      </div>
+    </nav>
+  </header>
+  <main id="content"></main>
+</body>
+</html>

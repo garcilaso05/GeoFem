@@ -1,0 +1,36 @@
+<h2>Acceso con archivo .easySQL</h2>
+
+<div id="subirArchivoBox" class="content-container">
+  <form id="formArchivo">
+    <div class="form-group">
+      <label for="archivoEasySQL">Selecciona tu archivo .easySQL:</label>
+      <input type="file" id="archivoEasySQL" accept=".easySQL" required>
+    </div>
+    <div class="form-group">
+      <label for="claveDesencriptar">Introduce la clave de cifrado:</label>
+      <input type="password" id="claveDesencriptar" required autocomplete="current-password">
+    </div>
+    <div class="form-group">
+      <button type="submit" class="btn-primary">Desencriptar y acceder</button>
+    </div>
+  </form>
+  <div id="progresoArchivo"></div>
+</div>
+
+<div id="loginBox" class="content-container" style="display:none">
+  <h3>Identificación de usuario Supabase</h3>
+  <form id="formLogin">
+    <div class="form-group">
+      <label for="loginEmail">Email:</label>
+      <input type="email" id="loginEmail" required>
+    </div>
+    <div class="form-group">
+      <label for="loginPass">Contraseña:</label>
+      <input type="password" id="loginPass" required autocomplete="current-password">
+    </div>
+    <div class="form-group">
+      <button type="submit" class="btn-primary">Entrar</button>
+    </div>
+  </form>
+  <div id="progresoLogin"></div>
+</div>
