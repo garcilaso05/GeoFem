@@ -16,15 +16,7 @@ SECURITY DEFINER
 VOLATILE
 SET search_path = public
 AS $$
-DECLARE
-  user_role text;
 BEGIN
-  SELECT role INTO user_role FROM public.profiles WHERE id = auth.uid();
-
-  IF user_role IS NULL THEN
-    RAISE EXCEPTION 'Debes estar autenticado';
-  END IF;
-
   RETURN QUERY
     SELECT
       c.column_name::text   AS column_name,

@@ -6,7 +6,7 @@ function getSupabaseInstance() {
   if (!window._supabaseInstance) {
     const { url, key } = window.getSupabaseCreds();
     if (!url || !key) {
-      alert("Introduce credenciales de Supabase");
+      alert("Error: No hay credenciales de Supabase disponibles");
       return null;
     }
     window._supabaseInstance = createClient(url, key);
@@ -20,7 +20,8 @@ let enumCache = {};
 async function cargarEnumeradosValores() {
   const supabase = getSupabaseInstance();
   if (!supabase) return {};
-  const { data, error } = await supabase.rpc('get_enum_values');
+  const schema = window.getCurrentSchema();
+  const { data, error } = await supabase.rpc(`${schema}_get_enum_values`);
   if (error || !data) return {};
   // Agrupar por enum_name
   const enums = {};
@@ -38,8 +39,10 @@ async function cargarTablas() {
   if (!supabase) return;
   const select = document.getElementById("insertTableSelect");
   select.innerHTML = '<option value="">Selecciona una tabla...</option>';
-  const { data, error } = await supabase.rpc('get_public_tables');
+  const schema = window.getCurrentSchema();
+  const { data, error } = await supabase.rpc(`${schema}_get_public_tables`);
   if (error || !data) {
+    console.error("Error completo:", error);
     alert("Error obteniendo tablas: " + (error?.message || ''));
     return;
   }
@@ -59,8 +62,8 @@ async function cargarCamposTabla(tabla) {
   container.innerHTML = '';
   if (!tabla) return;
   await cargarEnumeradosValores();
-  // Ahora pedimos también udt_name y fk_comment
-  const { data, error } = await supabase.rpc('get_table_columns', { tabla });
+  const schema = window.getCurrentSchema();
+  const { data, error } = await supabase.rpc(`${schema}_get_table_columns`, { tabla });
   if (error || !data) {
     container.innerHTML = '<span style="color:red">Error obteniendo columnas</span>';
     return;
@@ -84,11 +87,14 @@ async function cargarCamposTabla(tabla) {
       if (refInfo.length === 2) {
         const [refTable, refCol] = refInfo;
         try {
-          const { data: refRows, error: refError } = await supabase
-            .from(refTable)
-            .select(refCol);
-          if (!refError && Array.isArray(refRows)) {
-            refRows.forEach(row => {
+          // Usar función wrapper para obtener columna de referencia
+          const { data: refData, error: refError } = await supabase.rpc(`${schema}_select_column`, {
+            tabla: refTable,
+            columna: refCol
+          });
+          
+          if (!refError && Array.isArray(refData)) {
+            refData.forEach(row => {
               const opt = document.createElement('option');
               opt.value = row[refCol];
               opt.textContent = row[refCol];
@@ -184,14 +190,19 @@ async function insertRow() {
     const values = Object.values(row).map(v => {
         if (v === null) return 'NULL';
         if (typeof v === 'string') return escapeSqlValue(v);
-        return v; // for numbers and booleans
+        return v;
     });
 
     const sql = `INSERT INTO ${sanitizedTableName} (${columns.join(", ")}) VALUES (${values.join(", ")});`;
     document.getElementById("insertPreview").textContent = sql;
 
-    // Ejecutar inserción en Supabase (ya es seguro)
-    const { error } = await supabase.from(tableName).insert([row]);
+    // Ejecutar inserción usando función wrapper
+    const schema = window.getCurrentSchema();
+    const { error } = await supabase.rpc(`${schema}_insert_row`, {
+      tabla: tableName,
+      datos: row
+    });
+    
     if (error) {
       alert("Error insertando fila: " + error.message);
     } else {
@@ -230,3 +241,11 @@ window.addEventListener('easySQL:moduleChange', () => {
 // Ejecutar setup y cargar tablas al cargar el módulo
 setupInsercionesListeners();
 cargarTablas();
+
+// Escuchar cambios de esquema
+window.addEventListener('schema:change', () => {
+  console.log('Esquema cambiado, recargando tablas...');
+  cargarTablas();
+  document.getElementById('insertFormContainer').innerHTML = '';
+  document.getElementById('insertFormContainer').style.display = 'none';
+});

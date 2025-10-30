@@ -1,1 +1,0 @@
-// Este archivo no realiza ninguna acción. Solo existe para cumplir con la carga modular de la app.

@@ -6,7 +6,7 @@ function getSupabaseInstance() {
   if (!window._supabaseInstance) {
     const { url, key } = window.getSupabaseCreds();
     if (!url || !key) {
-      alert("Introduce credenciales de Supabase");
+      alert("Error: No hay credenciales de Supabase disponibles");
       return null;
     }
     window._supabaseInstance = createClient(url, key);
@@ -46,8 +46,9 @@ document.getElementById("formCrearEnum").onsubmit = async function(e) {
     }
 
     const sql = `CREATE TYPE ${name} AS ENUM (${elements.map(escapeSqlValue).join(', ')});`;
+    const schema = window.getCurrentSchema();
     
-    const { error } = await supabase.rpc("exec_create_enum", { query: sql });
+    const { error } = await supabase.rpc(`${schema}_exec_create_enum`, { query: sql });
 
     if (error) {
       status.textContent = "Error creando enumerado: " + error.message;
@@ -58,3 +59,9 @@ document.getElementById("formCrearEnum").onsubmit = async function(e) {
     status.textContent = "Error: " + err.message;
   }
 };
+
+// Escuchar cambios de esquema
+window.addEventListener('schema:change', () => {
+  console.log('Esquema cambiado');
+  document.getElementById("enumStatus").textContent = '';
+});

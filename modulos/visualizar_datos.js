@@ -6,7 +6,7 @@ function getSupabaseInstance() {
   if (!window._supabaseInstance) {
     const { url, key } = window.getSupabaseCreds();
     if (!url || !key) {
-      alert("Introduce credenciales de Supabase");
+      alert("Error: No hay credenciales de Supabase disponibles");
       return null;
     }
     window._supabaseInstance = createClient(url, key);
@@ -25,8 +25,11 @@ async function cargarTablas() {
   const select = document.getElementById("tableSelect");
   select.innerHTML = '<option value="">Selecciona una tabla...</option>';
   
-  const { data, error } = await supabase.rpc('get_public_tables');
+  const schema = window.getCurrentSchema();
+  // Usar función wrapper en public según el esquema
+  const { data, error } = await supabase.rpc(`${schema}_get_public_tables`);
   if (error || !data) {
+    console.error("Error completo:", error);
     alert("Error obteniendo tablas: " + (error?.message || ''));
     return;
   }
@@ -44,7 +47,8 @@ async function obtenerColumnas(tabla) {
   const supabase = getSupabaseInstance();
   if (!supabase) return [];
   
-  const { data, error } = await supabase.rpc('get_table_columns', { tabla });
+  const schema = window.getCurrentSchema();
+  const { data, error } = await supabase.rpc(`${schema}_get_table_columns`, { tabla });
   if (error || !data) {
     console.error("Error obteniendo columnas:", error);
     return [];
@@ -59,12 +63,11 @@ async function cargarDatos(tabla) {
   if (!supabase) return;
   
   try {
-    // Validar el nombre de la tabla
     sanitizeIdentifier(tabla);
     
-    const { data, error } = await supabase
-      .from(tabla)
-      .select('*');
+    const schema = window.getCurrentSchema();
+    // Usar función wrapper en lugar de .schema().from()
+    const { data, error } = await supabase.rpc(`${schema}_select_all`, { tabla });
       
     if (error) {
       console.error("Error cargando datos:", error);
@@ -72,6 +75,7 @@ async function cargarDatos(tabla) {
       return;
     }
     
+    // La función devuelve un jsonb, que ya es un array
     return data || [];
   } catch (err) {
     console.error("Error:", err);
@@ -86,28 +90,29 @@ async function obtenerDatosReferencia(fkComment, valorClave) {
   if (!supabase || !fkComment || !fkComment.startsWith('FK -> ')) return null;
   
   try {
-    // Parsear el comentario FK -> tabla.columna
-    const refInfo = fkComment.substring(6); // Quitar "FK -> "
+    const refInfo = fkComment.substring(6);
     const [tablaRef, columnaRef] = refInfo.split('.');
     
     if (!tablaRef || !columnaRef) return null;
     
-    // Validar identificadores
     sanitizeIdentifier(tablaRef);
     sanitizeIdentifier(columnaRef);
     
-    const { data, error } = await supabase
-      .from(tablaRef)
-      .select('*')
-      .eq(columnaRef, valorClave)
-      .limit(1);
+    const schema = window.getCurrentSchema();
+    // Usar función mejorada que acepta valor como string
+    const { data, error } = await supabase.rpc(`${schema}_select_one_by_value`, {
+      tabla: tablaRef,
+      columna: columnaRef,
+      valor: String(valorClave) // Convertir a string para evitar problemas de tipo
+    });
       
     if (error) {
       console.error("Error obteniendo referencia:", error);
       return null;
     }
     
-    return data && data.length > 0 ? data[0] : null;
+    // La función devuelve un objeto JSON directamente, no un array
+    return data && Object.keys(data).length > 0 ? data : null;
   } catch (err) {
     console.error("Error obteniendo referencia:", err);
     return null;
@@ -163,7 +168,13 @@ function crearTablaHTML(datos, columnas) {
 // Mostrar tooltip con datos de referencia
 async function mostrarTooltipReferencia(elemento, fkComment, valor) {
   const tooltip = document.getElementById('foreignKeyTooltip');
-  tooltip.innerHTML = 'Cargando...';
+  
+  if (!tooltip) {
+    console.error('Elemento foreignKeyTooltip no encontrado');
+    return;
+  }
+  
+  tooltip.innerHTML = '<strong>Cargando...</strong>';
   tooltip.style.display = 'block';
   
   // Posicionar el tooltip cerca del elemento
@@ -171,24 +182,30 @@ async function mostrarTooltipReferencia(elemento, fkComment, valor) {
   tooltip.style.left = (rect.right + 10) + 'px';
   tooltip.style.top = rect.top + 'px';
   
+  console.log('Buscando referencia para:', fkComment, valor);
+  
   // Obtener los datos de referencia
   const datosRef = await obtenerDatosReferencia(fkComment, valor);
   
-  if (datosRef) {
+  console.log('Datos de referencia obtenidos:', datosRef);
+  
+  if (datosRef && Object.keys(datosRef).length > 0) {
     let contenido = '<strong>Referencia:</strong><br>';
     Object.entries(datosRef).forEach(([campo, valorCampo]) => {
       contenido += `<strong>${campo}:</strong> ${valorCampo !== null && valorCampo !== undefined ? valorCampo : 'NULL'}<br>`;
     });
     tooltip.innerHTML = contenido;
   } else {
-    tooltip.innerHTML = 'No se pudo cargar la referencia';
+    tooltip.innerHTML = '<strong>No se pudo cargar la referencia</strong><br><em>No se encontraron datos</em>';
   }
 }
 
 // Ocultar tooltip
 function ocultarTooltip() {
   const tooltip = document.getElementById('foreignKeyTooltip');
-  tooltip.style.display = 'none';
+  if (tooltip) {
+    tooltip.style.display = 'none';
+  }
 }
 
 // Event listeners
@@ -245,6 +262,7 @@ function setupVisualizarDatosListeners() {
   // Event delegation para las celdas de claves foráneas
   dataContainer.addEventListener('mouseenter', async (e) => {
     if (e.target.classList.contains('foreign-key-cell')) {
+      console.log('Mouse sobre FK cell');
       const fkComment = e.target.getAttribute('data-fk-comment');
       const valor = e.target.getAttribute('data-fk-value');
       await mostrarTooltipReferencia(e.target, fkComment, valor);
@@ -253,6 +271,7 @@ function setupVisualizarDatosListeners() {
   
   dataContainer.addEventListener('mouseleave', (e) => {
     if (e.target.classList.contains('foreign-key-cell')) {
+      console.log('Mouse fuera de FK cell');
       ocultarTooltip();
     }
   }, true);
@@ -260,17 +279,25 @@ function setupVisualizarDatosListeners() {
   // Ocultar tooltip al mover el mouse fuera del área
   document.addEventListener('mousemove', (e) => {
     const tooltip = document.getElementById('foreignKeyTooltip');
-    if (tooltip.style.display === 'block') {
-      const tooltipRect = tooltip.getBoundingClientRect();
-      const mouseX = e.clientX;
-      const mouseY = e.clientY;
-      
-      // Si el mouse está fuera del tooltip y no sobre una celda FK, ocultar
-      if (!e.target.classList.contains('foreign-key-cell') &&
-          (mouseX < tooltipRect.left || mouseX > tooltipRect.right ||
-           mouseY < tooltipRect.top || mouseY > tooltipRect.bottom)) {
-        ocultarTooltip();
-      }
+    if (!tooltip || tooltip.style.display !== 'block') return;
+    
+    const tooltipRect = tooltip.getBoundingClientRect();
+    const mouseX = e.clientX;
+    const mouseY = e.clientY;
+    
+    // Si el mouse está fuera del tooltip y no sobre una celda FK, ocultar
+    if (!e.target.classList.contains('foreign-key-cell') &&
+        (mouseX < tooltipRect.left - 10 || mouseX > tooltipRect.right + 10 ||
+         mouseY < tooltipRect.top - 10 || mouseY > tooltipRect.bottom + 10)) {
+      ocultarTooltip();
+    }
+  });
+  
+  // También ocultar al hacer scroll
+  document.addEventListener('scroll', () => {
+    const tooltip = document.getElementById('foreignKeyTooltip');
+    if (tooltip && tooltip.style.display === 'block') {
+      ocultarTooltip();
     }
   });
 }
@@ -278,6 +305,14 @@ function setupVisualizarDatosListeners() {
 // Limpiar instancia global de supabase al cambiar de módulo
 window.addEventListener('easySQL:moduleChange', () => {
   window._supabaseInstance = null;
+});
+
+// Escuchar cambios de esquema
+window.addEventListener('schema:change', () => {
+  console.log('Esquema cambiado, recargando tablas...');
+  cargarTablas();
+  document.getElementById('dataContainer').innerHTML = '';
+  document.getElementById('dataContainer').style.display = 'none';
 });
 
 // Ejecutar setup y cargar tablas al cargar el módulo

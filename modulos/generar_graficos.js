@@ -6,7 +6,7 @@ function getSupabaseInstance() {
   if (!window._supabaseInstance) {
     const { url, key } = window.getSupabaseCreds();
     if (!url || !key) {
-      alert("Introduce credenciales de Supabase");
+      alert("Error: No hay credenciales de Supabase disponibles");
       return null;
     }
     window._supabaseInstance = createClient(url, key);
@@ -39,8 +39,10 @@ async function cargarTablas() {
   const select = document.getElementById("tableSelectGraph");
   select.innerHTML = '<option value="">Selecciona una tabla...</option>';
   
-  const { data, error } = await supabase.rpc('get_public_tables');
+  const schema = window.getCurrentSchema();
+  const { data, error } = await supabase.rpc(`${schema}_get_public_tables`);
   if (error || !data) {
+    console.error("Error completo:", error);
     alert("Error obteniendo tablas: " + (error?.message || ''));
     return;
   }
@@ -66,7 +68,8 @@ async function cargarCamposTabla(tabla) {
   
   try {
     sanitizeIdentifier(tabla);
-    const { data, error } = await supabase.rpc('get_table_columns', { tabla });
+    const schema = window.getCurrentSchema();
+    const { data, error } = await supabase.rpc(`${schema}_get_table_columns`, { tabla });
     
     if (error || !data) {
       select.innerHTML = '<option value="">Error cargando campos</option>';
@@ -92,14 +95,15 @@ async function obtenerDatosGrafico(tabla, campo) {
   if (!supabase) return null;
   
   try {
-    // Validar identificadores
     sanitizeIdentifier(tabla);
     sanitizeIdentifier(campo);
     
-    // Obtener datos agrupados y contados
-    const { data, error } = await supabase
-      .from(tabla)
-      .select(campo);
+    const schema = window.getCurrentSchema();
+    // Usar función wrapper para obtener solo una columna
+    const { data, error } = await supabase.rpc(`${schema}_select_column`, {
+      tabla: tabla,
+      columna: campo
+    });
       
     if (error) {
       console.error("Error obteniendo datos:", error);
@@ -534,6 +538,18 @@ function setupGraficosListeners() {
 window.addEventListener('easySQL:moduleChange', () => {
   window._supabaseInstance = null;
   // Destruir gráfico si existe
+  if (chartInstance) {
+    chartInstance.destroy();
+    chartInstance = null;
+  }
+});
+
+// Escuchar cambios de esquema
+window.addEventListener('schema:change', () => {
+  console.log('Esquema cambiado, recargando tablas...');
+  cargarTablas();
+  document.getElementById('graphContainer').innerHTML = '';
+  document.getElementById('statsContainer').innerHTML = '';
   if (chartInstance) {
     chartInstance.destroy();
     chartInstance = null;

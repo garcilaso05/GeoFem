@@ -1,32 +1,98 @@
-<h2>Visualización de Datos</h2>
-
-<div class="form-row">
+<div class="module-content">
+  <h2>📊 Visualizar Datos de Tablas</h2>
+  
   <div class="form-group">
     <label for="tableSelect">Selecciona una tabla:</label>
     <select id="tableSelect">
-      <option value="">Selecciona una tabla...</option>
+      <option value="">Cargando tablas...</option>
     </select>
   </div>
-  <div class="form-group">
-    <button id="loadDataBtn" class="btn-primary" disabled>Cargar Datos</button>
-  </div>
+  
+  <button id="loadDataBtn" disabled>Cargar Datos</button>
+  
+  <div id="dataContainer" style="margin-top: 20px; overflow-x: auto; display: none;"></div>
+  
+  <!-- Tooltip para FK (se muestra dinámicamente) -->
+  <div id="foreignKeyTooltip" style="
+    display: none;
+    position: fixed;
+    background: white;
+    border: 2px solid #007bff;
+    border-radius: 8px;
+    padding: 15px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    z-index: 10000;
+    max-width: 400px;
+    font-size: 13px;
+    line-height: 1.6;
+  "></div>
 </div>
 
-<div id="dataContainer" class="data-container" style="display: none;">
-  <!-- Aquí se mostrará la tabla con los datos -->
-</div>
-
-<!-- Tooltip flotante para mostrar referencias de claves foráneas -->
-<div id="foreignKeyTooltip" style="
-  position: absolute;
-  background: #333;
-  color: white;
-  padding: 8px;
-  border-radius: 4px;
-  font-size: 12px;
-  display: none;
-  z-index: 1000;
-  max-width: 300px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-">
-</div>
+<style>
+  .data-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 20px;
+    background: white;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  }
+  
+  .data-table th {
+    background: #007bff;
+    color: white;
+    padding: 12px;
+    text-align: left;
+    font-weight: 600;
+    border: 1px solid #0056b3;
+  }
+  
+  .data-table td {
+    padding: 10px 12px;
+    border: 1px solid #ddd;
+  }
+  
+  .data-table tr:nth-child(even) {
+    background: #f8f9fa;
+  }
+  
+  .data-table tr:hover {
+    background: #e9ecef;
+  }
+  
+  .foreign-key-cell {
+    color: #007bff;
+    text-decoration: underline;
+    cursor: pointer;
+    font-weight: 500;
+    padding: 2px 6px;
+    border-radius: 3px;
+    transition: all 0.2s;
+  }
+  
+  .foreign-key-cell:hover {
+    background-color: #e7f3ff;
+    color: #0056b3;
+  }
+  
+  #foreignKeyTooltip {
+    display: none;
+    position: fixed;
+    background: white;
+    border: 2px solid #007bff;
+    border-radius: 8px;
+    padding: 15px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    z-index: 10000;
+    max-width: 400px;
+    font-size: 13px;
+    line-height: 1.6;
+  }
+  
+  #foreignKeyTooltip strong {
+    color: #007bff;
+  }
+  
+  #dataContainer {
+    position: relative;
+  }
+</style>

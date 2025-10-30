@@ -2,67 +2,310 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8">
-  <title>Gestor SQL Supabase</title>
+  <title>GeoFem - Control de Acceso</title>
   <link rel="stylesheet" href="estilos.css">
   <style>
-    body { font-family: sans-serif; margin: 0; }
-    header { background: #333; color: white; padding: 10px; }
-    nav { display: flex; gap: 10px; margin-top: 5px; }
-    nav button { background: #555; color: white; border: none; padding: 8px 12px; cursor: pointer; border-radius: 4px; }
-    nav button:hover { background: #777; }
-    .nav-right { margin-left: auto; display: flex; gap: 10px; }
-    #content { padding: 20px; }
+    body { 
+      font-family: sans-serif; 
+      margin: 0; 
+      background: #f5f5f5;
+    }
+    
+    /* Header para autenticación */
+    #auth-header {
+      background: #333; 
+      color: white; 
+      padding: 20px;
+      text-align: center;
+    }
+    
+    /* Header para aplicación */
+    #app-header {
+      background: #333;
+      color: white;
+      padding: 15px 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    
+    #app-header h1 {
+      margin: 0;
+      font-size: 24px;
+    }
+    
+    /* Contenedor de autenticación */
+    #auth-content { 
+      max-width: 600px;
+      margin: 40px auto;
+      padding: 30px;
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+    
+    /* Navegación de la aplicación */
+    #app-nav {
+      background: #f8f9fa;
+      padding: 15px 20px;
+      border-bottom: 2px solid #ddd;
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    
+    #app-nav button {
+      background: #007bff;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      cursor: pointer;
+      border-radius: 4px;
+      font-size: 14px;
+      width: auto;
+      margin: 0;
+    }
+    
+    #app-nav button:hover {
+      background: #0056b3;
+    }
+    
+    #app-nav button.active {
+      background: #28a745;
+    }
+    
+    /* Contenedor principal de módulos */
+    #app-main {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    
+    #module-container {
+      background: white;
+      padding: 30px;
+      margin-top: 20px;
+      border-radius: 8px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+      min-height: 400px;
+    }
+    
+    .form-group {
+      margin-bottom: 20px;
+    }
+    .form-group label {
+      display: block;
+      margin-bottom: 5px;
+      font-weight: 600;
+    }
+    .form-group input {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      box-sizing: border-box;
+    }
+    button {
+      background: #007bff;
+      color: white;
+      border: none;
+      padding: 12px 24px;
+      cursor: pointer;
+      border-radius: 4px;
+      font-size: 16px;
+      width: 100%;
+      margin-top: 10px;
+    }
+    button:hover {
+      background: #0056b3;
+    }
+    button.secondary {
+      background: #6c757d;
+    }
+    button.secondary:hover {
+      background: #545b62;
+    }
+    .message {
+      padding: 12px;
+      border-radius: 4px;
+      margin-bottom: 20px;
+    }
+    .error {
+      background: #f8d7da;
+      color: #721c24;
+      border: 1px solid #f5c6cb;
+    }
+    .success {
+      background: #d4edda;
+      color: #155724;
+      border: 1px solid #c3e6cb;
+    }
+    .hidden {
+      display: none;
+    }
+    .user-info {
+      background: #e9ecef;
+      padding: 15px;
+      border-radius: 4px;
+      margin-bottom: 20px;
+    }
+    .user-info p {
+      margin: 8px 0;
+    }
+    .tabs {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+    .tabs button {
+      flex: 1;
+      background: #e9ecef;
+      color: #333;
+    }
+    .tabs button.active {
+      background: #007bff;
+      color: white;
+    }
+    
+    /* Estilos para el tooltip de referencias FK */
+    #foreignKeyTooltip {
+      display: none;
+      position: fixed;
+      background: white;
+      border: 2px solid #007bff;
+      border-radius: 8px;
+      padding: 15px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+      z-index: 10000;
+      max-width: 400px;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+    
+    #foreignKeyTooltip strong {
+      color: #007bff;
+    }
+    
+    /* Estilos para celdas con FK */
+    .foreign-key-cell {
+      color: #007bff;
+      text-decoration: underline;
+      cursor: pointer;
+      font-weight: 500;
+    }
+    
+    .foreign-key-cell:hover {
+      background-color: #e7f3ff;
+      color: #0056b3;
+    }
   </style>
-  <script type="module">
-    // Bloqueo de navegación para evitar múltiples cargas
-    let navLocked = false;
-    function setNavEnabled(enabled) {
-      const nav = document.querySelector('header nav');
-      if (!nav) return;
-      Array.from(nav.querySelectorAll('button')).forEach(btn => btn.disabled = !enabled);
-      navLocked = !enabled;
-    }
-    async function loadModule(moduleHtml, moduleScript) {
-      if (navLocked) return;
-      setNavEnabled(false);
-      // Cargar el HTML
-      const res = await fetch(moduleHtml);
-      const html = await res.text();
-      document.getElementById("content").innerHTML = html;
-      // Eliminar scripts de módulo anteriores
-      document.querySelectorAll('script[data-module]').forEach(s => s.remove());
-      // Cargar el script del módulo (forzando recarga)
-      if (moduleScript) {
-        const script = document.createElement("script");
-        script.type = "module";
-        script.src = moduleScript + '?v=' + Date.now();
-        script.setAttribute('data-module', 'true');
-        script.onload = () => setNavEnabled(true);
-        document.body.appendChild(script);
-      } else {
-        setNavEnabled(true);
-      }
-    }
-
-    // Cargar por defecto el módulo de bienvenida
-    window.addEventListener("DOMContentLoaded", () => {
-      loadModule("modulos/bienvenida.html", "modulos/bienvenida.js");
-    });
-
-    window.loadModule = loadModule;
-  </script>
 </head>
 <body>
-  <header>
-    <h1>Gestor SQL Supabase</h1>
-    <nav>
-      <button onclick="loadModule('modulos/bienvenida.html','modulos/bienvenida.js')">Bienvenida</button>
-      <div class="nav-right">
-        <button onclick="loadModule('modulos/subir_archivo.html','modulos/subir_archivo.js')">Acceder</button>
-        <button onclick="loadModule('modulos/crear_llave.html','modulos/crear_llave.js')">Registarse</button>
+  <!-- ============================================ -->
+  <!-- VISTA DE AUTENTICACIÓN (Login/Registro)     -->
+  <!-- ============================================ -->
+  <div id="auth-view">
+    <header id="auth-header">
+      <h1>GeoFem - Control de Acceso</h1>
+    </header>
+    
+    <main id="auth-content">
+      <div class="tabs">
+        <button id="tab-login" class="active" onclick="showTab('login')">Iniciar Sesión</button>
+        <button id="tab-register" onclick="showTab('register')">Registrarse</button>
       </div>
+      
+      <div id="message-container"></div>
+
+      <!-- Formulario de Inicio de Sesión -->
+      <form id="login-form">
+        <div class="form-group">
+          <label for="login-email">Email</label>
+          <input type="email" id="login-email" required>
+        </div>
+        <div class="form-group">
+          <label for="login-password">Contraseña</label>
+          <input type="password" id="login-password" required>
+        </div>
+        <button type="submit">Iniciar Sesión</button>
+      </form>
+
+      <!-- Formulario de Registro -->
+      <form id="register-form" class="hidden">
+        <div class="form-group">
+          <label for="register-email">Email</label>
+          <input type="email" id="register-email" required>
+        </div>
+        <div class="form-group">
+          <label for="register-password">Contraseña</label>
+          <input type="password" id="register-password" required minlength="6">
+        </div>
+        <div class="form-group">
+          <label for="register-password-confirm">Confirmar Contraseña</label>
+          <input type="password" id="register-password-confirm" required minlength="6">
+        </div>
+        <button type="submit">Registrarse</button>
+      </form>
+    </main>
+  </div>
+
+  <!-- ============================================ -->
+  <!-- VISTA DE USUARIO (Información básica)       -->
+  <!-- ============================================ -->
+  <div id="user-view" class="hidden">
+    <header id="auth-header">
+      <h1>GeoFem - Control de Acceso</h1>
+    </header>
+    
+    <main id="auth-content">
+      <h2>Bienvenido</h2>
+      <div class="user-info">
+        <p><strong>Email:</strong> <span id="user-email"></span></p>
+        <p><strong>UID:</strong> <span id="user-uid"></span></p>
+        <p><strong>Rol:</strong> <span id="user-role">Cargando...</span></p>
+      </div>
+      <button class="secondary" id="logout-btn">Cerrar Sesión</button>
+    </main>
+  </div>
+
+  <!-- ============================================ -->
+  <!-- VISTA DE APLICACIÓN (Módulos)               -->
+  <!-- ============================================ -->
+  <div id="app-view" class="hidden">
+    <header id="app-header">
+      <h1>GeoFem - Visualización de Datos</h1>
+      <div style="display: flex; align-items: center; gap: 15px;">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <label for="schema-selector" style="font-size: 14px; color: white;">Base de datos:</label>
+          <select id="schema-selector" onchange="changeSchema(this.value)" style="padding: 6px 12px; border-radius: 4px; border: none; font-size: 14px;">
+            <option value="mdr">Madres</option>
+            <option value="hrf">Huérfanos</option>
+          </select>
+        </div>
+        <span id="app-user-email" style="margin-right: 5px;"></span>
+        <button class="secondary" id="app-logout-btn" style="background: #dc3545; padding: 8px 16px;">Cerrar Sesión</button>
+      </div>
+    </header>
+    
+    <nav id="app-nav">
+      <button onclick="loadModule('visualizar_datos')">📊 Visualizar Datos</button>
+      <button onclick="loadModule('generar_graficos')">📈 Generar Gráficos</button>
+      <!-- Botones solo para administradores -->
+      <button class="admin-only" onclick="loadModule('crear_enumerado')" style="display: none;">🔢 Crear Enumerado</button>
+      <button class="admin-only" onclick="loadModule('editar_tabla')" style="display: none;">✏️ Editar Tabla</button>
+      <button class="admin-only" onclick="loadModule('inserciones')" style="display: none;">➕ Inserciones</button>
     </nav>
-  </header>
-  <main id="content"></main>
+    
+    <main id="app-main">
+      <div id="module-container">
+        <p style="text-align: center; color: #666;">Selecciona un módulo del menú superior</p>
+      </div>
+    </main>
+  </div>
+
+  <!-- Tooltip para mostrar referencias de claves foráneas -->
+  <div id="foreignKeyTooltip"></div>
+
+  <script type="module" src="auth.js"></script>
 </body>
 </html>

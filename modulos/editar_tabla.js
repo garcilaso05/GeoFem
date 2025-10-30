@@ -2,14 +2,22 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js";
 import { sanitizeIdentifier } from "./seguridad.js";
 
 function getSupabaseInstance() {
-  if (!window._supabaseInstance) {
-    const { url, key } = window.getSupabaseCreds();
-    if (!url || !key) {
-      alert("Introduce credenciales de Supabase");
-      return null;
-    }
-    window._supabaseInstance = createClient(url, key);
+  // 1. Si ya existe una instancia global (posiblemente autenticada), usarla
+  if (window._supabaseInstance) {
+    return window._supabaseInstance;
   }
+  
+  // 2. Si no existe, crear nueva instancia con credenciales públicas
+  const { url, key } = window.getSupabaseCreds();
+  if (!url || !key) {
+    alert("Error: No hay credenciales de Supabase disponibles");
+    return null;
+  }
+  
+  // 3. Crear cliente con ANON KEY
+  // Si el usuario está autenticado, Supabase recupera automáticamente el JWT de localStorage
+  window._supabaseInstance = createClient(url, key);
+  
   return window._supabaseInstance;
 }
 
@@ -18,8 +26,12 @@ async function cargarTablas() {
   if (!supabase) return;
   const select = document.getElementById("editTableSelect");
   select.innerHTML = '<option value="">Selecciona una tabla...</option>';
-  const { data, error } = await supabase.rpc('get_public_tables');
-  if (error || !data) return;
+  const schema = window.getCurrentSchema();
+  const { data, error } = await supabase.rpc(`${schema}_get_public_tables`);
+  if (error || !data) {
+    console.error("Error completo:", error);
+    return;
+  }
   data.forEach(row => {
     const opt = document.createElement("option");
     opt.value = row.table_name;
@@ -35,7 +47,6 @@ async function cargarCamposTabla(tabla) {
   const container = document.getElementById("editFieldsContainer");
   const addFieldBtn = document.getElementById("addFieldBtn");
   
-  // Limpiar contenedor
   container.innerHTML = '';
   container.style.display = 'none';
   addFieldBtn.disabled = true;
@@ -48,8 +59,8 @@ async function cargarCamposTabla(tabla) {
   console.log('Cargando columnas para tabla:', tabla);
   
   try {
-    // Usar la función get_table_columns existente
-    const { data, error } = await supabase.rpc('get_table_columns', { tabla });
+    const schema = window.getCurrentSchema();
+    const { data, error } = await supabase.rpc(`${schema}_get_table_columns`, { tabla });
     
     if (error) {
       console.error('Error con get_table_columns:', error);
@@ -129,7 +140,8 @@ async function renombrarCampo(tabla, oldName, newName) {
   const supabase = getSupabaseInstance();
   if (!supabase) return;
   try {
-    const { error } = await supabase.rpc('alter_table_safe', {
+    const schema = window.getCurrentSchema();
+    const { error } = await supabase.rpc(`${schema}_alter_table_safe`, {
       tabla,
       alter_sql: `RENAME COLUMN ${sanitizeIdentifier(oldName)} TO ${sanitizeIdentifier(newName)}`
     });
@@ -145,7 +157,8 @@ async function borrarCampo(tabla, colName) {
   const supabase = getSupabaseInstance();
   if (!supabase) return;
   try {
-    const { error } = await supabase.rpc('alter_table_safe', {
+    const schema = window.getCurrentSchema();
+    const { error } = await supabase.rpc(`${schema}_alter_table_safe`, {
       tabla,
       alter_sql: `DROP COLUMN ${sanitizeIdentifier(colName)}`
     });
@@ -162,7 +175,8 @@ async function borrarTabla(tabla) {
   const supabase = getSupabaseInstance();
   if (!supabase) return;
   try {
-    const { error } = await supabase.rpc('drop_table_safe', { tabla });
+    const schema = window.getCurrentSchema();
+    const { error } = await supabase.rpc(`${schema}_drop_table_safe`, { tabla });
     if (error) throw error;
     mostrarMsg('Tabla borrada con éxito', 'green');
     cargarTablas();
@@ -173,20 +187,21 @@ async function borrarTabla(tabla) {
 }
 
 async function anadirCampo(tabla) {
-  // Evitar múltiples formularios
   if (document.getElementById('addFieldForm')) return;
   const container = document.getElementById("editFieldsContainer");
   const formDiv = document.createElement('div');
   formDiv.id = 'addFieldForm';
   formDiv.style.margin = '10px 0';
-  // Obtener tablas existentes para referencias
+  
   const tablasExistentes = await (async () => {
     const supabase = getSupabaseInstance();
     if (!supabase) return [];
-    const { data, error } = await supabase.rpc('get_public_tables');
+    const schema = window.getCurrentSchema();
+    const { data, error } = await supabase.rpc(`${schema}_get_public_tables`);
     if (error || !data) return [];
     return data.map(row => row.table_name);
   })();
+  
   // Tipos de datos
   const tipos = [
     { value: "INT", label: "Entero" },
@@ -246,7 +261,8 @@ async function anadirCampo(tabla) {
     const supabase = getSupabaseInstance();
     if (!supabase) return;
     try {
-      const { error } = await supabase.rpc('alter_table_safe', {
+      const schema = window.getCurrentSchema();
+      const { error } = await supabase.rpc(`${schema}_alter_table_safe`, {
         tabla,
         alter_sql: alterSql
       });
@@ -305,4 +321,14 @@ function setupEditarTablaListeners() {
   };
 }
 
+// Escuchar cambios de esquema
+window.addEventListener('schema:change', () => {
+  console.log('Esquema cambiado, recargando tablas...');
+  cargarTablas();
+  document.getElementById('editFieldsContainer').innerHTML = '';
+  document.getElementById('editFieldsContainer').style.display = 'none';
+});
+
+
+setupEditarTablaListeners();
 setupEditarTablaListeners();
