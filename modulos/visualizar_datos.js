@@ -25,36 +25,28 @@ async function cargarTablas() {
   const select = document.getElementById("tableSelect");
   select.innerHTML = '<option value="">Selecciona una tabla...</option>';
   
-  const schema = window.getCurrentSchema();
-  // Usar función wrapper en public según el esquema
-  const { data, error } = await supabase.rpc(`${schema}_get_public_tables`);
-  if (error || !data) {
-    console.error("Error completo:", error);
-    alert("Error obteniendo tablas: " + (error?.message || ''));
-    return;
+  // Esperar a que la caché esté lista
+  if (window.dbCache && !window.dbCache.isCacheReady()) {
+    console.log('⏳ Esperando a que la caché se inicialice...');
+    await window.dbCache.waitForCache();
   }
   
-  data.forEach(row => {
+  // OPTIMIZACIÓN: Usar caché en lugar de RPC
+  const schema = window.getCurrentSchema();
+  const data = window.dbCache.getTables(schema);
+  
+  data.forEach(tableName => {
     const opt = document.createElement("option");
-    opt.value = row.table_name;
-    opt.textContent = row.table_name;
+    opt.value = tableName;
+    opt.textContent = tableName;
     select.appendChild(opt);
   });
 }
 
-// Obtener información de columnas de una tabla
-async function obtenerColumnas(tabla) {
-  const supabase = getSupabaseInstance();
-  if (!supabase) return [];
-  
+// OPTIMIZACIÓN: Obtener información de columnas desde caché
+function obtenerColumnas(tabla) {
   const schema = window.getCurrentSchema();
-  const { data, error } = await supabase.rpc(`${schema}_get_table_columns`, { tabla });
-  if (error || !data) {
-    console.error("Error obteniendo columnas:", error);
-    return [];
-  }
-  
-  return data;
+  return window.dbCache.getTableColumns(schema, tabla);
 }
 
 // Obtener todos los datos de una tabla

@@ -14,57 +14,50 @@ function getSupabaseInstance() {
   return window._supabaseInstance;
 }
 
-let enumCache = {};
-
-// Consultar enumerados y sus valores
-async function cargarEnumeradosValores() {
-  const supabase = getSupabaseInstance();
-  if (!supabase) return {};
-  const schema = window.getCurrentSchema();
-  const { data, error } = await supabase.rpc(`${schema}_get_enum_values`);
-  if (error || !data) return {};
-  // Agrupar por enum_name
-  const enums = {};
-  data.forEach(row => {
-    if (!enums[row.enum_name]) enums[row.enum_name] = [];
-    enums[row.enum_name].push(row.enum_value);
-  });
-  enumCache = enums;
-  return enums;
-}
-
-// Obtener tablas al cargar el módulo usando la función RPC
+// OPTIMIZACIÓN: Obtener tablas desde caché
 async function cargarTablas() {
   const supabase = getSupabaseInstance();
   if (!supabase) return;
   const select = document.getElementById("insertTableSelect");
   select.innerHTML = '<option value="">Selecciona una tabla...</option>';
-  const schema = window.getCurrentSchema();
-  const { data, error } = await supabase.rpc(`${schema}_get_public_tables`);
-  if (error || !data) {
-    console.error("Error completo:", error);
-    alert("Error obteniendo tablas: " + (error?.message || ''));
-    return;
+  
+  // Esperar a que la caché esté lista
+  if (window.dbCache && !window.dbCache.isCacheReady()) {
+    console.log('⏳ Esperando a que la caché se inicialice...');
+    await window.dbCache.waitForCache();
   }
-  data.forEach(row => {
+  
+  // OPTIMIZACIÓN: Usar caché en lugar de RPC
+  const schema = window.getCurrentSchema();
+  const data = window.dbCache.getTables(schema);
+  
+  data.forEach(tableName => {
     const opt = document.createElement("option");
-    opt.value = row.table_name;
-    opt.textContent = row.table_name;
+    opt.value = tableName;
+    opt.textContent = tableName;
     select.appendChild(opt);
   });
 }
 
-// Obtener columnas y tipos de la tabla seleccionada usando la función RPC
+// Obtener columnas y tipos de la tabla seleccionada (OPTIMIZADO con caché)
 async function cargarCamposTabla(tabla) {
   const supabase = getSupabaseInstance();
   if (!supabase) return;
   const container = document.getElementById("insertFormContainer");
   container.innerHTML = '';
   if (!tabla) return;
-  await cargarEnumeradosValores();
+  
+  // Esperar a que la caché esté lista
+  if (window.dbCache && !window.dbCache.isCacheReady()) {
+    console.log('⏳ Esperando a que la caché se inicialice...');
+    await window.dbCache.waitForCache();
+  }
+  
+  // OPTIMIZACIÓN: Usar caché en lugar de llamadas RPC
   const schema = window.getCurrentSchema();
-  const { data, error } = await supabase.rpc(`${schema}_get_table_columns`, { tabla });
-  if (error || !data) {
+  const data = window.dbCache.getTableColumns(schema, tabla);
+  
+  if (!data || data.length === 0) {
     container.innerHTML = '<span style="color:red">Error obteniendo columnas</span>';
     return;
   }
@@ -105,16 +98,26 @@ async function cargarCamposTabla(tabla) {
           // Si hay error, solo deja NULL
         }
       }
-    } else if (col.udt_name && enumCache[col.udt_name]) {
-      input = document.createElement('select');
-      input.className = 'fieldValue';
-      input.name = col.column_name;
-      enumCache[col.udt_name].forEach(val => {
-        const opt = document.createElement('option');
-        opt.value = val;
-        opt.textContent = val;
-        input.appendChild(opt);
-      });
+    } else if (col.udt_name) {
+      // OPTIMIZACIÓN: Usar caché para enums
+      const enumValues = window.dbCache.getEnumValues(col.udt_name);
+      if (enumValues && enumValues.length > 0) {
+        input = document.createElement('select');
+        input.className = 'fieldValue';
+        input.name = col.column_name;
+        enumValues.forEach(val => {
+          const opt = document.createElement('option');
+          opt.value = val;
+          opt.textContent = val;
+          input.appendChild(opt);
+        });
+      } else {
+        // Si no hay valores de enum, campo de texto normal
+        input = document.createElement('input');
+        input.type = 'text';
+        input.className = 'fieldValue';
+        input.name = col.column_name;
+      }
     } else if (col.data_type === 'boolean') {
       input = document.createElement('input');
       input.type = 'checkbox';

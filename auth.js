@@ -101,7 +101,13 @@ window.loadModule = async function(moduleName) {
 
 // Función para mostrar formulario de autenticación de Supabase para ADMIN
 function showSupabaseAuthForm() {
-  const content = document.getElementById('content');
+  // Usar auth-content en lugar de content
+  const content = document.getElementById('auth-content');
+  
+  if (!content) {
+    console.error('No se encontró el elemento auth-content');
+    return;
+  }
   
   content.innerHTML = `
     <h2>Autenticación de Administrador</h2>
@@ -221,7 +227,7 @@ window.getCurrentSchema = function() {
 };
 
 // Función para mostrar la aplicación para usuarios USER
-function showUserApp(user, userEmail) {
+async function showUserApp(user, userEmail) {
   console.log('showUserApp llamada para:', userEmail);
   
   authView.classList.add('hidden');
@@ -246,6 +252,16 @@ function showUserApp(user, userEmail) {
     btn.style.display = 'none';
   });
   
+  // Inicializar caché de base de datos
+  console.log('🚀 Inicializando caché de base de datos...');
+  try {
+    const { initializeDatabaseCache } = await import('./modulos/database-cache.js');
+    await initializeDatabaseCache();
+    console.log('✅ Caché inicializada correctamente');
+  } catch (error) {
+    console.error('❌ Error inicializando caché:', error);
+  }
+  
   setTimeout(() => {
     const firstButton = document.querySelector('#app-nav button:not(.admin-only)');
     if (firstButton) {
@@ -258,7 +274,7 @@ function showUserApp(user, userEmail) {
 }
 
 // Función para mostrar la aplicación para administradores ADMIN
-function showAdminApp(user, userEmail) {
+async function showAdminApp(user, userEmail) {
   console.log('showAdminApp llamada para:', userEmail);
   
   authView.classList.add('hidden');
@@ -282,6 +298,16 @@ function showAdminApp(user, userEmail) {
   adminButtons.forEach(btn => {
     btn.style.display = 'inline-block';
   });
+  
+  // Inicializar caché de base de datos
+  console.log('🚀 Inicializando caché de base de datos...');
+  try {
+    const { initializeDatabaseCache } = await import('./modulos/database-cache.js');
+    await initializeDatabaseCache();
+    console.log('✅ Caché inicializada correctamente');
+  } catch (error) {
+    console.error('❌ Error inicializando caché:', error);
+  }
   
   setTimeout(() => {
     const firstButton = document.querySelector('#app-nav button');
@@ -403,6 +429,11 @@ document.getElementById('app-logout-btn').addEventListener('click', async () => 
   try {
     console.log('Cerrando sesión...');
     
+    // Limpiar caché de base de datos
+    if (window.dbCache) {
+      window.dbCache.clearCache();
+    }
+    
     // Si hay una sesión de Supabase activa, cerrarla
     if (window._supabaseInstance && window._supabaseAuthCreds?.authenticated) {
       await window._supabaseInstance.auth.signOut();
@@ -453,9 +484,11 @@ onAuthStateChanged(auth, async (user) => {
             showAdminApp(user, user.email);
           } else {
             console.log('Mostrando formulario de auth Supabase para ADMIN');
-            authView.classList.add('hidden');
+            // Mostrar la vista de auth y ocultar las demás
+            authView.classList.remove('hidden');
             userView.classList.add('hidden');
             appView.classList.add('hidden');
+            // Mostrar el formulario de Supabase
             showSupabaseAuthForm();
           }
         } else {

@@ -198,9 +198,103 @@
       background-color: #e7f3ff;
       color: #0056b3;
     }
+    
+    /* Pantalla de carga global */
+    #global-loading-screen {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      z-index: 99999;
+      color: white;
+    }
+    
+    #global-loading-screen.hidden {
+      display: none;
+    }
+    
+    .loading-logo {
+      font-size: 48px;
+      font-weight: bold;
+      margin-bottom: 30px;
+      text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+    }
+    
+    .loading-spinner {
+      width: 80px;
+      height: 80px;
+      border: 8px solid rgba(255, 255, 255, 0.3);
+      border-top: 8px solid white;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin-bottom: 30px;
+    }
+    
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    
+    .loading-text {
+      font-size: 20px;
+      margin-bottom: 10px;
+      font-weight: 500;
+    }
+    
+    .loading-subtext {
+      font-size: 14px;
+      opacity: 0.9;
+      text-align: center;
+      max-width: 400px;
+      padding: 0 20px;
+    }
+    
+    .loading-progress {
+      margin-top: 20px;
+      width: 300px;
+      height: 6px;
+      background: rgba(255, 255, 255, 0.3);
+      border-radius: 3px;
+      overflow: hidden;
+    }
+    
+    .loading-progress-bar {
+      height: 100%;
+      background: white;
+      border-radius: 3px;
+      transition: width 0.3s ease;
+      width: 0%;
+    }
+    
+    .loading-stats {
+      margin-top: 20px;
+      font-size: 13px;
+      opacity: 0.8;
+      text-align: center;
+    }
   </style>
 </head>
 <body>
+  <!-- ============================================ -->
+  <!-- PANTALLA DE CARGA GLOBAL                    -->
+  <!-- ============================================ -->
+  <div id="global-loading-screen" class="hidden">
+    <div class="loading-logo">🌍 GeoFem</div>
+    <div class="loading-spinner"></div>
+    <div class="loading-text" id="loading-text">Inicializando aplicación...</div>
+    <div class="loading-subtext" id="loading-subtext">Cargando metadatos de la base de datos</div>
+    <div class="loading-progress">
+      <div class="loading-progress-bar" id="loading-progress-bar"></div>
+    </div>
+    <div class="loading-stats" id="loading-stats"></div>
+  </div>
+
   <!-- ============================================ -->
   <!-- VISTA DE AUTENTICACIÓN (Login/Registro)     -->
   <!-- ============================================ -->
@@ -290,10 +384,12 @@
     <nav id="app-nav">
       <button onclick="loadModule('visualizar_datos')">📊 Visualizar Datos</button>
       <button onclick="loadModule('generar_graficos')">📈 Generar Gráficos</button>
+      <button onclick="loadModule('buscar_caso')">🔍 Buscar Caso</button>
       <!-- Botones solo para administradores -->
+      <button class="admin-only" onclick="loadModule('editar_caso')" style="display: none;">✏️ Editar Caso</button>
       <button class="admin-only" onclick="loadModule('crear_enumerado')" style="display: none;">🔢 Crear Enumerado</button>
-      <button class="admin-only" onclick="loadModule('editar_tabla')" style="display: none;">✏️ Editar Tabla</button>
-      <button class="admin-only" onclick="loadModule('inserciones')" style="display: none;">➕ Inserciones</button>
+      <button class="admin-only" onclick="loadModule('editar_tabla')" style="display: none;">🗂️ Editar Estructura</button>
+      <button class="admin-only" onclick="loadModule('inserciones')" style="display: none;">➕ Insertar Nuevo Caso</button>
     </nav>
     
     <main id="app-main">

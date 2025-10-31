@@ -68,10 +68,18 @@ async function cargarCamposTabla(tabla) {
   
   try {
     sanitizeIdentifier(tabla);
-    const schema = window.getCurrentSchema();
-    const { data, error } = await supabase.rpc(`${schema}_get_table_columns`, { tabla });
     
-    if (error || !data) {
+    // Esperar a que la caché esté lista
+    if (window.dbCache && !window.dbCache.isCacheReady()) {
+      console.log('⏳ Esperando a que la caché se inicialice...');
+      await window.dbCache.waitForCache();
+    }
+    
+    // OPTIMIZACIÓN: Usar caché en lugar de RPC
+    const schema = window.getCurrentSchema();
+    const data = window.dbCache.getTableColumns(schema, tabla);
+    
+    if (!data || data.length === 0) {
       select.innerHTML = '<option value="">Error cargando campos</option>';
       return;
     }

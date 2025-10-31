@@ -1,0 +1,324 @@
+<div class="module-content">
+  <h2>✏️ Editar Caso</h2>
+  <p style="color: #666;">Busca y modifica casos existentes. Solo disponible para administradores.</p>
+  
+  <!-- Barra de carga -->
+  <div id="loading-filters-edit" style="margin-top: 20px; text-align: center;">
+    <div class="loading-spinner"></div>
+    <p style="color: #666; margin-top: 10px;">Cargando tablas y filtros...</p>
+  </div>
+  
+  <div id="filters-container-edit" style="margin-top: 20px; display: none;">
+    <!-- Los contenedores de filtros se generarán dinámicamente -->
+  </div>
+  
+  <div style="margin-top: 20px; display: flex; gap: 10px;">
+    <button id="searchBtnEdit" style="background: #28a745;">Buscar Casos</button>
+    <button id="clearFiltersBtnEdit" class="secondary">Limpiar Filtros</button>
+  </div>
+  
+  <div id="results-container-edit" style="margin-top: 30px; display: none;">
+    <h3>Resultados de la Búsqueda</h3>
+    <p id="results-count-edit" style="color: #666; margin-bottom: 15px;"></p>
+    
+    <!-- Botón de guardar cambios -->
+    <div id="save-changes-container" style="margin-bottom: 20px; display: none;">
+      <button id="saveChangesBtn" style="background: #dc3545; font-size: 16px; padding: 12px 24px;">
+        💾 Guardar Todos los Cambios
+      </button>
+      <span id="changes-count" style="margin-left: 15px; color: #dc3545; font-weight: 600;"></span>
+    </div>
+    
+    <div id="results-table-edit"></div>
+  </div>
+</div>
+
+<style>
+  .filter-table-container {
+    background: #f8f9fa;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    margin-bottom: 15px;
+    overflow: hidden;
+  }
+  
+  .filter-table-header {
+    background: #007bff;
+    color: white;
+    padding: 12px 15px;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    user-select: none;
+  }
+  
+  .filter-table-header:hover {
+    background: #0056b3;
+  }
+  
+  .filter-table-header .toggle-icon {
+    font-size: 18px;
+    transition: transform 0.3s;
+  }
+  
+  .filter-table-header .toggle-icon.collapsed {
+    transform: rotate(-90deg);
+  }
+  
+  .filter-table-body {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.3s ease;
+  }
+  
+  .filter-table-body.expanded {
+    max-height: 2000px;
+    padding: 15px;
+  }
+  
+  .filter-field {
+    display: grid;
+    grid-template-columns: 200px 1fr;
+    gap: 10px;
+    margin-bottom: 12px;
+    align-items: center;
+  }
+  
+  .filter-field label {
+    font-weight: 500;
+    color: #333;
+  }
+  
+  .filter-field input,
+  .filter-field select {
+    padding: 8px 12px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 14px;
+  }
+  
+  .filter-field input:focus,
+  .filter-field select:focus {
+    outline: none;
+    border-color: #007bff;
+    box-shadow: 0 0 0 3px rgba(0,123,255,0.1);
+  }
+  
+  .results-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 15px;
+    background: white;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  }
+  
+  .results-table th {
+    background: #007bff;
+    color: white;
+    padding: 12px;
+    text-align: left;
+    font-weight: 600;
+    border: 1px solid #0056b3;
+  }
+  
+  .results-table td {
+    padding: 10px 12px;
+    border: 1px solid #ddd;
+  }
+  
+  .results-table tr:nth-child(even) {
+    background: #f8f9fa;
+  }
+  
+  .results-table tr:hover {
+    background: #e9ecef;
+  }
+  
+  .no-results {
+    text-align: center;
+    padding: 40px;
+    color: #666;
+    font-style: italic;
+  }
+  
+  /* Spinner de carga */
+  .loading-spinner {
+    margin: 30px auto;
+    width: 50px;
+    height: 50px;
+    border: 5px solid #f3f3f3;
+    border-top: 5px solid #007bff;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+  }
+  
+  @keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+  }
+  
+  /* Estilos para resultados en tarjetas */
+  .results-cards-container {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+  }
+  
+  .result-card {
+    background: white;
+    border: 2px solid #dc3545;
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    transition: box-shadow 0.3s;
+  }
+  
+  .result-card:hover {
+    box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+  }
+  
+  .result-card-header {
+    background: #dc3545;
+    color: white;
+    padding: 15px 20px;
+    font-weight: 600;
+    font-size: 16px;
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    user-select: none;
+  }
+  
+  .result-card-header:hover {
+    background: #c82333;
+  }
+  
+  .result-id {
+    font-size: 18px;
+  }
+  
+  .result-card-body {
+    padding: 15px;
+    background: #f8f9fa;
+  }
+  
+  .loading-text {
+    text-align: center;
+    color: #666;
+    padding: 20px;
+  }
+  
+  /* Tablas dentro de resultados */
+  .caso-tables-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  
+  .table-item {
+    background: white;
+    border: 1px solid #dee2e6;
+    border-radius: 6px;
+    overflow: hidden;
+  }
+  
+  .table-item-header {
+    background: #ffc107;
+    color: #000;
+    padding: 12px 15px;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    user-select: none;
+  }
+  
+  .table-item-header:hover {
+    background: #e0a800;
+  }
+  
+  .table-name {
+    font-size: 15px;
+  }
+  
+  .table-item-body {
+    padding: 15px;
+    background: #ffffff;
+  }
+  
+  /* Grid de campos EDITABLES */
+  .fields-grid-edit {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+    gap: 15px;
+  }
+  
+  .field-item-edit {
+    display: flex;
+    flex-direction: column;
+    padding: 12px;
+    background: #f8f9fa;
+    border-left: 3px solid #dc3545;
+    border-radius: 4px;
+  }
+  
+  .field-item-edit.modified {
+    background: #fff3cd;
+    border-left-color: #ffc107;
+    box-shadow: 0 0 0 2px rgba(255, 193, 7, 0.2);
+  }
+  
+  .field-label-edit {
+    font-weight: 600;
+    color: #495057;
+    font-size: 13px;
+    margin-bottom: 6px;
+    text-transform: capitalize;
+  }
+  
+  .field-input-edit {
+    padding: 8px 12px;
+    border: 1px solid #ced4da;
+    border-radius: 4px;
+    font-size: 14px;
+    font-family: inherit;
+  }
+  
+  .field-input-edit:focus {
+    outline: none;
+    border-color: #dc3545;
+    box-shadow: 0 0 0 3px rgba(220, 53, 69, 0.1);
+  }
+  
+  .field-input-edit.modified-input {
+    border-color: #ffc107;
+    background: #fff;
+  }
+  
+  .toggle-icon {
+    font-size: 16px;
+    transition: transform 0.3s;
+  }
+  
+  /* Botón de guardar */
+  #saveChangesBtn {
+    animation: pulse 2s infinite;
+  }
+  
+  @keyframes pulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.05); }
+  }
+  
+  #saveChangesBtn:disabled {
+    background: #6c757d;
+    cursor: not-allowed;
+    animation: none;
+  }
+</style>
+
+<script type="module" src="modulos/editar_caso.js"></script>

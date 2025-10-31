@@ -25,17 +25,25 @@ async function cargarTablas() {
   const supabase = getSupabaseInstance();
   if (!supabase) return;
   const select = document.getElementById("editTableSelect");
+  if (!select) return;
+  
+  // Limpiar opciones existentes para evitar duplicados
   select.innerHTML = '<option value="">Selecciona una tabla...</option>';
+  
   const schema = window.getCurrentSchema();
   const { data, error } = await supabase.rpc(`${schema}_get_public_tables`);
   if (error || !data) {
     console.error("Error completo:", error);
     return;
   }
-  data.forEach(row => {
+  
+  // Usar Set para evitar duplicados
+  const uniqueTables = [...new Set(data.map(row => row.table_name))];
+  
+  uniqueTables.forEach(tableName => {
     const opt = document.createElement("option");
-    opt.value = row.table_name;
-    opt.textContent = row.table_name;
+    opt.value = tableName;
+    opt.textContent = tableName;
     select.appendChild(opt);
   });
 }
@@ -59,13 +67,15 @@ async function cargarCamposTabla(tabla) {
   console.log('Cargando columnas para tabla:', tabla);
   
   try {
-    const schema = window.getCurrentSchema();
-    const { data, error } = await supabase.rpc(`${schema}_get_table_columns`, { tabla });
-    
-    if (error) {
-      console.error('Error con get_table_columns:', error);
-      throw new Error(`Error obteniendo columnas: ${error.message}`);
+    // Esperar a que la caché esté lista
+    if (window.dbCache && !window.dbCache.isCacheReady()) {
+      console.log('⏳ Esperando a que la caché se inicialice...');
+      await window.dbCache.waitForCache();
     }
+    
+    // OPTIMIZACIÓN: Usar caché en lugar de RPC
+    const schema = window.getCurrentSchema();
+    const data = window.dbCache.getTableColumns(schema, tabla);
     
     if (!data || data.length === 0) {
       container.innerHTML = '<p style="color: orange;">No se encontraron columnas para esta tabla.</p>';
@@ -73,7 +83,7 @@ async function cargarCamposTabla(tabla) {
       return;
     }
     
-    console.log('Columnas obtenidas:', data);
+    console.log('Columnas obtenidas desde caché:', data);
     
     // Crear elementos para cada columna
     data.forEach(col => {
@@ -107,18 +117,12 @@ async function cargarCamposTabla(tabla) {
                  style="margin-right: 10px; padding: 4px; width: 150px;" />
           <span style="color:#888; margin-right: 10px; font-size: 12px;">${typeDisplay}</span>
           <button type="button" class="renameFieldBtn btn-secondary" style="margin-right: 5px; padding: 4px 8px;">Renombrar</button>
-          <button type="button" class="deleteFieldBtn btn-primary" style="background-color: #f44336; padding: 4px 8px;">Borrar</button>
           ${isPrimary ? '<span style="color: #4CAF50; font-weight: bold; margin-left: 10px;">PK</span>' : ''}
           ${fkComment ? '<span style="color: #2196F3; font-weight: bold; margin-left: 5px;">FK</span>' : ''}
         </div>
       `;
       
-      if (isPrimary) {
-        const deleteBtn = div.querySelector('.deleteFieldBtn');
-        deleteBtn.disabled = true;
-        deleteBtn.title = 'No se puede borrar la clave primaria';
-        deleteBtn.style.opacity = '0.5';
-      }
+      // Botones de borrado eliminados por seguridad
       
       container.appendChild(div);
     });
@@ -141,9 +145,10 @@ async function renombrarCampo(tabla, oldName, newName) {
   if (!supabase) return;
   try {
     const schema = window.getCurrentSchema();
-    const { error } = await supabase.rpc(`${schema}_alter_table_safe`, {
+    const { error } = await supabase.rpc(`${schema}_rename_column_safe`, {
       tabla,
-      alter_sql: `RENAME COLUMN ${sanitizeIdentifier(oldName)} TO ${sanitizeIdentifier(newName)}`
+      old_name: oldName,
+      new_name: newName
     });
     if (error) throw error;
     mostrarMsg('Campo renombrado con éxito', 'green');
@@ -153,38 +158,8 @@ async function renombrarCampo(tabla, oldName, newName) {
   }
 }
 
-async function borrarCampo(tabla, colName) {
-  const supabase = getSupabaseInstance();
-  if (!supabase) return;
-  try {
-    const schema = window.getCurrentSchema();
-    const { error } = await supabase.rpc(`${schema}_alter_table_safe`, {
-      tabla,
-      alter_sql: `DROP COLUMN ${sanitizeIdentifier(colName)}`
-    });
-    if (error) throw error;
-    mostrarMsg('Campo borrado con éxito', 'green');
-    cargarCamposTabla(tabla);
-  } catch (err) {
-    mostrarMsg('Error borrando campo: ' + err.message, 'red');
-  }
-}
-
-async function borrarTabla(tabla) {
-  if (!confirm('¿Seguro que quieres borrar la tabla? Esta acción es irreversible.')) return;
-  const supabase = getSupabaseInstance();
-  if (!supabase) return;
-  try {
-    const schema = window.getCurrentSchema();
-    const { error } = await supabase.rpc(`${schema}_drop_table_safe`, { tabla });
-    if (error) throw error;
-    mostrarMsg('Tabla borrada con éxito', 'green');
-    cargarTablas();
-    document.getElementById("editFieldsContainer").innerHTML = '';
-  } catch (err) {
-    mostrarMsg('Error borrando tabla: ' + err.message, 'red');
-  }
-}
+// FUNCIONES DE BORRADO ELIMINADAS - NO SE PERMITE BORRAR CAMPOS NI TABLAS
+// Por seguridad, estas operaciones han sido deshabilitadas
 
 async function anadirCampo(tabla) {
   if (document.getElementById('addFieldForm')) return;
@@ -249,22 +224,22 @@ async function anadirCampo(tabla) {
     const nombre = formDiv.querySelector('#newFieldName').value.trim();
     let tipo = typeSelect.value;
     if (!nombre) return mostrarMsg('Introduce un nombre de campo', 'red');
-    let alterSql;
+    let columnSql;
     if (tipo === 'REFERENCIA') {
       const refTable = refSelect.value;
       if (!refTable) return mostrarMsg('Selecciona la tabla a referenciar', 'red');
       tipo = 'INT';
-      alterSql = `ADD COLUMN ${sanitizeIdentifier(nombre)} ${tipo} REFERENCES ${sanitizeIdentifier(refTable)}(id)`;
+      columnSql = `${sanitizeIdentifier(nombre)} ${tipo} REFERENCES ${sanitizeIdentifier(refTable)}(id)`;
     } else {
-      alterSql = `ADD COLUMN ${sanitizeIdentifier(nombre)} ${tipo}`;
+      columnSql = `${sanitizeIdentifier(nombre)} ${tipo}`;
     }
     const supabase = getSupabaseInstance();
     if (!supabase) return;
     try {
       const schema = window.getCurrentSchema();
-      const { error } = await supabase.rpc(`${schema}_alter_table_safe`, {
+      const { error } = await supabase.rpc(`${schema}_add_column_safe`, {
         tabla,
-        alter_sql: alterSql
+        column_sql: columnSql
       });
       if (error) throw error;
       mostrarMsg('Campo añadido con éxito', 'green');
@@ -299,10 +274,14 @@ function setupEditarTablaListeners() {
     const tabla = select.value;
     if (tabla) anadirCampo(tabla);
   };
-  document.getElementById("deleteTableBtn").onclick = () => {
-    const tabla = select.value;
-    if (tabla) borrarTabla(tabla);
-  };
+  // Botón de borrar tabla eliminado - no se permite borrar tablas
+  const deleteTableBtn = document.getElementById("deleteTableBtn");
+  if (deleteTableBtn) {
+    deleteTableBtn.disabled = true;
+    deleteTableBtn.title = 'Por seguridad, no se permite borrar tablas';
+    deleteTableBtn.style.opacity = '0.5';
+  }
+  
   document.getElementById("editFieldsContainer").onclick = function(e) {
     const tabla = select.value;
     if (!tabla) return;
@@ -314,9 +293,8 @@ function setupEditarTablaListeners() {
         renombrarCampo(tabla, oldName, newName);
       }
     } else if (e.target.classList.contains('deleteFieldBtn')) {
-      const div = e.target.closest('.editFieldRow');
-      const colName = div.querySelector('.editFieldName').dataset.original;
-      if (colName) borrarCampo(tabla, colName);
+      // Borrado de campos deshabilitado
+      mostrarMsg('Por seguridad, no se permite borrar campos', 'red');
     }
   };
 }
