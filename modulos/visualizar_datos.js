@@ -18,8 +18,9 @@ let currentTableData = [];
 let currentTableColumns = [];
 let filteredData = []; // Datos después de aplicar búsqueda
 let currentPage = 1;
-let rowsPerPage = 50;
+let rowsPerPage = 25;
 let searchTerm = '';
+let activeFilters = []; // Array de filtros activos: [{field, value}]
 
 // Obtener todas las tablas disponibles
 async function cargarTablas() {
@@ -115,10 +116,10 @@ async function obtenerDatosReferencia(fkComment, valorClave) {
   }
 }
 
-// Crear la tabla HTML con los datos (CON PAGINACIÓN)
+// Crear la tabla HTML con los datos (CON PAGINACIÓN Y ESTILOS MEJORADOS)
 function crearTablaHTML(datos, columnas) {
   if (!datos || datos.length === 0) {
-    return '<p>No hay datos para mostrar.</p>';
+    return '<div class="no-data-message"><p>📭 No hay datos para mostrar</p></div>';
   }
   
   const headers = Object.keys(datos[0]);
@@ -128,7 +129,8 @@ function crearTablaHTML(datos, columnas) {
   // Cabeceras
   html += '<thead><tr>';
   headers.forEach(header => {
-    html += `<th>${formatDisplayName(header)}</th>`;
+    const displayName = formatDisplayName(header);
+    html += `<th title="${header}">${displayName}</th>`;
   });
   html += '</tr></thead>';
   
@@ -141,17 +143,38 @@ function crearTablaHTML(datos, columnas) {
       const columna = columnas.find(col => col.column_name === header);
       const esClaveForeigna = columna && columna.fk_comment && columna.fk_comment.startsWith('FK -> ');
       
-      if (esClaveForeigna && valor !== null && valor !== undefined) {
-        html += `<td>
-          <span class="foreign-key-cell" 
+      // Determinar clase CSS según tipo de valor
+      let cellClass = '';
+      let displayValue = '';
+      
+      if (valor === null || valor === undefined) {
+        cellClass = 'cell-null';
+        displayValue = '<span class="null-badge">NULL</span>';
+      } else if (esClaveForeigna) {
+        displayValue = `<span class="foreign-key-cell" 
                 data-fk-comment="${columna.fk_comment}" 
                 data-fk-value="${valor}">
-            ${valor}
-          </span>
-        </td>`;
+            🔗 ${valor}
+          </span>`;
+      } else if (typeof valor === 'boolean') {
+        cellClass = valor ? 'cell-boolean-true' : 'cell-boolean-false';
+        displayValue = valor ? '<span class="boolean-badge true">✓ Sí</span>' : '<span class="boolean-badge false">✗ No</span>';
+      } else if (typeof valor === 'number') {
+        cellClass = 'cell-number';
+        displayValue = valor.toLocaleString('es-ES');
+      } else if (String(valor).match(/^\d{4}-\d{2}-\d{2}/)) {
+        // Detectar fechas
+        cellClass = 'cell-date';
+        displayValue = `📅 ${valor}`;
       } else {
-        html += `<td>${valor !== null && valor !== undefined ? valor : 'NULL'}</td>`;
+        displayValue = String(valor);
+        // Limitar longitud de texto muy largo
+        if (displayValue.length > 100) {
+          displayValue = `<span title="${displayValue}">${displayValue.substring(0, 97)}...</span>`;
+        }
       }
+      
+      html += `<td class="${cellClass}">${displayValue}</td>`;
     });
     html += '</tr>';
   });
@@ -165,21 +188,41 @@ function crearTablaHTML(datos, columnas) {
 // FUNCIONES DE BÚSQUEDA Y FILTRADO
 // ============================================================================
 
-// Filtrar datos según término de búsqueda
+// Filtrar datos según término de búsqueda Y filtros activos
 function filtrarDatos(datos, termino) {
-  if (!termino || termino.trim() === '') {
-    return datos;
+  let resultado = datos;
+  
+  // 1. Aplicar filtros avanzados por campo
+  if (activeFilters.length > 0) {
+    resultado = resultado.filter(fila => {
+      // Todos los filtros deben cumplirse (AND)
+      return activeFilters.every(filter => {
+        const valorCampo = fila[filter.field];
+        const valorFiltro = filter.value.toLowerCase();
+        
+        if (valorCampo === null || valorCampo === undefined) {
+          return valorFiltro === 'null' || valorFiltro === '';
+        }
+        
+        return String(valorCampo).toLowerCase().includes(valorFiltro);
+      });
+    });
   }
   
-  const terminoLower = termino.toLowerCase();
-  
-  return datos.filter(fila => {
-    // Buscar en todos los campos de la fila
-    return Object.values(fila).some(valor => {
-      if (valor === null || valor === undefined) return false;
-      return String(valor).toLowerCase().includes(terminoLower);
+  // 2. Aplicar búsqueda global
+  if (termino && termino.trim() !== '') {
+    const terminoLower = termino.toLowerCase();
+    
+    resultado = resultado.filter(fila => {
+      // Buscar en todos los campos de la fila
+      return Object.values(fila).some(valor => {
+        if (valor === null || valor === undefined) return false;
+        return String(valor).toLowerCase().includes(terminoLower);
+      });
     });
-  });
+  }
+  
+  return resultado;
 }
 
 // Actualizar información de búsqueda
@@ -187,15 +230,184 @@ function actualizarInfoBusqueda() {
   const searchInfo = document.getElementById('searchInfo');
   if (!searchInfo) return;
   
-  if (searchTerm.trim() !== '') {
-    const totalOriginal = currentTableData.length;
-    const totalFiltrado = filteredData.length;
-    searchInfo.textContent = `Se encontraron ${totalFiltrado} de ${totalOriginal} registros`;
+  const totalOriginal = currentTableData.length;
+  const totalFiltrado = filteredData.length;
+  const hayFiltrosActivos = activeFilters.length > 0;
+  const hayBusqueda = searchTerm.trim() !== '';
+  
+  if (hayBusqueda || hayFiltrosActivos) {
+    let mensaje = `Se encontraron ${totalFiltrado} de ${totalOriginal} registros`;
+    
+    if (hayFiltrosActivos) {
+      mensaje += ` (${activeFilters.length} filtro${activeFilters.length > 1 ? 's' : ''} activo${activeFilters.length > 1 ? 's' : ''})`;
+    }
+    
+    searchInfo.textContent = mensaje;
     searchInfo.style.color = totalFiltrado > 0 ? '#27ae60' : '#e74c3c';
   } else {
     searchInfo.textContent = '';
   }
 }
+
+// ============================================================================
+// FUNCIONES DE FILTROS AVANZADOS
+// ============================================================================
+
+// Obtener tipo de campo y valores de enumerado si aplica
+function obtenerInfoCampo(nombreCampo) {
+  const columna = currentTableColumns.find(col => col.column_name === nombreCampo);
+  if (!columna) return { isEnum: false, enumValues: [] };
+  
+  // Verificar si es un enumerado
+  const schema = window.getCurrentSchema();
+  const enumType = window.dbCache.getColumnEnumType(schema, tableSelect.value, nombreCampo);
+  
+  if (enumType) {
+    const enumValues = window.dbCache.getEnumValues(enumType);
+    return { isEnum: true, enumValues: enumValues || [] };
+  }
+  
+  return { isEnum: false, enumValues: [] };
+}
+
+// Mostrar sugerencias de enumerado
+// Cargar campos en el selector de filtros
+function cargarCamposFiltro() {
+  const filterFieldSelect = document.getElementById('filterFieldSelect');
+  if (!filterFieldSelect) return;
+  
+  filterFieldSelect.innerHTML = '<option value="">Selecciona un campo...</option>';
+  
+  if (!currentTableData || currentTableData.length === 0) return;
+  
+  const headers = Object.keys(currentTableData[0]);
+  headers.forEach(header => {
+    const opt = document.createElement('option');
+    opt.value = header;
+    
+    // Detectar si es enumerado y añadir badge
+    const info = obtenerInfoCampo(header);
+    const displayName = formatDisplayName(header);
+    opt.textContent = info.isEnum ? `${displayName} 🏷️` : displayName;
+    
+    filterFieldSelect.appendChild(opt);
+  });
+}
+
+// Añadir un nuevo filtro
+function añadirFiltro() {
+  const filterFieldSelect = document.getElementById('filterFieldSelect');
+  const filterValueInput = document.getElementById('filterValueInput');
+  const filterValueSelect = document.getElementById('filterValueSelect');
+  
+  if (!filterFieldSelect || !filterValueInput || !filterValueSelect) return;
+  
+  const field = filterFieldSelect.value;
+  
+  // Obtener valor del elemento visible (input o select)
+  const value = filterValueInput.style.display !== 'none' 
+    ? filterValueInput.value.trim()
+    : filterValueSelect.value;
+  
+  if (!field || !value) {
+    alert('Debes seleccionar un campo y un valor');
+    return;
+  }
+  
+  // Verificar si ya existe este filtro
+  const existeFiltro = activeFilters.some(f => f.field === field && f.value === value);
+  if (existeFiltro) {
+    alert('Este filtro ya está activo');
+    return;
+  }
+  
+  // Añadir el filtro
+  activeFilters.push({ field, value });
+  
+  // Limpiar inputs
+  filterFieldSelect.value = '';
+  filterValueInput.value = '';
+  filterValueSelect.value = '';
+  
+  // Restablecer a mostrar input por defecto
+  filterValueInput.style.display = 'block';
+  filterValueSelect.style.display = 'none';
+  
+  // Actualizar UI
+  renderizarFiltrosActivos();
+  aplicarFiltros();
+}
+
+// Eliminar un filtro
+function eliminarFiltro(index) {
+  activeFilters.splice(index, 1);
+  renderizarFiltrosActivos();
+  aplicarFiltros();
+}
+
+// Limpiar todos los filtros
+function limpiarTodosFiltros() {
+  activeFilters = [];
+  renderizarFiltrosActivos();
+  aplicarFiltros();
+}
+
+// Renderizar chips de filtros activos
+function renderizarFiltrosActivos() {
+  const activeFiltersContainer = document.getElementById('activeFiltersContainer');
+  const activeFiltersList = document.getElementById('activeFiltersList');
+  
+  if (!activeFiltersContainer || !activeFiltersList) return;
+  
+  if (activeFilters.length === 0) {
+    activeFiltersContainer.style.display = 'none';
+    return;
+  }
+  
+  activeFiltersContainer.style.display = 'block';
+  activeFiltersList.innerHTML = '';
+  
+  activeFilters.forEach((filter, index) => {
+    const chip = document.createElement('div');
+    chip.className = 'filter-chip';
+    chip.innerHTML = `
+      <span class="filter-chip-field">${formatDisplayName(filter.field)}</span>
+      <span>=</span>
+      <span class="filter-chip-value">${filter.value}</span>
+      <button class="filter-chip-remove" onclick="eliminarFiltro(${index})" title="Eliminar filtro">✕</button>
+    `;
+    activeFiltersList.appendChild(chip);
+  });
+}
+
+// Aplicar todos los filtros y actualizar tabla
+function aplicarFiltros() {
+  filteredData = filtrarDatos(currentTableData, searchTerm);
+  currentPage = 1; // Volver a la primera página
+  renderizarTablaPaginada();
+  actualizarInfoBusqueda();
+}
+
+// Toggle panel de filtros
+function toggleFiltersPanel() {
+  const filtersPanel = document.getElementById('filtersPanel');
+  const toggleBtn = document.getElementById('toggleFiltersBtn');
+  
+  if (!filtersPanel || !toggleBtn) return;
+  
+  const isVisible = filtersPanel.style.display !== 'none';
+  
+  if (isVisible) {
+    filtersPanel.style.display = 'none';
+    toggleBtn.textContent = 'Mostrar Filtros ▼';
+  } else {
+    filtersPanel.style.display = 'block';
+    toggleBtn.textContent = 'Ocultar Filtros ▲';
+  }
+}
+
+// Exponer funciones globalmente para los event handlers inline
+window.eliminarFiltro = eliminarFiltro;
 
 // ============================================================================
 // FUNCIONES DE PAGINACIÓN
@@ -306,6 +518,7 @@ function actualizarEstadisticas() {
 function mostrarElementosUI(mostrar) {
   const statsCards = document.getElementById('statsCards');
   const searchBar = document.getElementById('searchBar');
+  const advancedFilters = document.getElementById('advancedFilters');
   const paginationControls = document.getElementById('paginationControls');
   const dataContainer = document.getElementById('dataContainer');
   
@@ -313,6 +526,7 @@ function mostrarElementosUI(mostrar) {
   
   if (statsCards) statsCards.style.display = mostrar ? 'grid' : 'none';
   if (searchBar) searchBar.style.display = display;
+  if (advancedFilters) advancedFilters.style.display = display;
   if (paginationControls) paginationControls.style.display = mostrar ? 'flex' : 'none';
   if (dataContainer) dataContainer.style.display = display;
 }
@@ -398,6 +612,7 @@ function setupVisualizarDatosListeners() {
       filteredData = datos; // Inicialmente, datos filtrados = todos los datos
       currentPage = 1; // Resetear a primera página
       searchTerm = ''; // Limpiar búsqueda
+      activeFilters = []; // Limpiar filtros
       
       // Limpiar campo de búsqueda
       const searchInput = document.getElementById('searchInput');
@@ -405,6 +620,12 @@ function setupVisualizarDatosListeners() {
       
       const clearSearchBtn = document.getElementById('clearSearchBtn');
       if (clearSearchBtn) clearSearchBtn.style.display = 'none';
+      
+      // Cargar campos en selector de filtros
+      cargarCamposFiltro();
+      
+      // Limpiar filtros activos
+      renderizarFiltrosActivos();
       
       // Mostrar elementos UI
       mostrarElementosUI(true);
@@ -458,11 +679,94 @@ function setupVisualizarDatosListeners() {
       }
       clearSearchBtn.style.display = 'none';
       searchTerm = '';
-      filteredData = currentTableData;
-      currentPage = 1;
-      renderizarTablaPaginada();
-      actualizarInfoBusqueda();
+      aplicarFiltros();
     };
+  }
+  
+  // ============================================================================
+  // EVENT LISTENERS DE FILTROS AVANZADOS
+  // ============================================================================
+  
+  const toggleFiltersBtn = document.getElementById('toggleFiltersBtn');
+  const filterFieldSelect = document.getElementById('filterFieldSelect');
+  const filterValueInput = document.getElementById('filterValueInput');
+  const filterValueSelect = document.getElementById('filterValueSelect');
+  const addFilterBtn = document.getElementById('addFilterBtn');
+  const clearAllFiltersBtn = document.getElementById('clearAllFiltersBtn');
+  
+  // Toggle panel de filtros
+  if (toggleFiltersBtn) {
+    toggleFiltersBtn.onclick = toggleFiltersPanel;
+  }
+  
+  // Habilitar/deshabilitar botón añadir filtro
+  if (filterFieldSelect && filterValueInput && filterValueSelect && addFilterBtn) {
+    const checkFilterInputs = () => {
+      const hasField = filterFieldSelect.value !== '';
+      // Verificar el valor del elemento visible (input o select)
+      const hasValue = filterValueInput.style.display !== 'none' 
+        ? filterValueInput.value.trim() !== ''
+        : filterValueSelect.value !== '';
+      addFilterBtn.disabled = !(hasField && hasValue);
+    };
+    
+    // Cuando cambia el campo seleccionado
+    filterFieldSelect.onchange = () => {
+      const campo = filterFieldSelect.value;
+      filterValueInput.value = '';
+      filterValueSelect.value = '';
+      
+      if (campo) {
+        const info = obtenerInfoCampo(campo);
+        
+        if (info.isEnum && info.enumValues.length > 0) {
+          // Es un enum: mostrar select y ocultar input
+          filterValueInput.style.display = 'none';
+          filterValueSelect.style.display = 'block';
+          
+          // Llenar el select con las opciones del enum
+          filterValueSelect.innerHTML = '<option value="">Selecciona un valor...</option>';
+          info.enumValues.forEach(valor => {
+            const option = document.createElement('option');
+            option.value = valor;
+            option.textContent = valor;
+            filterValueSelect.appendChild(option);
+          });
+        } else {
+          // No es enum: mostrar input y ocultar select
+          filterValueInput.style.display = 'block';
+          filterValueSelect.style.display = 'none';
+          filterValueInput.placeholder = 'Escribe el valor a buscar...';
+        }
+      } else {
+        // Si no hay campo, mostrar input por defecto
+        filterValueInput.style.display = 'block';
+        filterValueSelect.style.display = 'none';
+      }
+      
+      checkFilterInputs();
+    };
+    
+    // Cuando escribe en el input de valor
+    filterValueInput.oninput = checkFilterInputs;
+    
+    // Cuando cambia el select de valor
+    filterValueSelect.onchange = checkFilterInputs;
+    
+    // Añadir filtro al hacer click en el botón
+    addFilterBtn.onclick = añadirFiltro;
+    
+    // Añadir filtro al presionar Enter en el input de valor
+    filterValueInput.onkeypress = (e) => {
+      if (e.key === 'Enter' && !addFilterBtn.disabled) {
+        añadirFiltro();
+      }
+    };
+  }
+  
+  // Limpiar todos los filtros
+  if (clearAllFiltersBtn) {
+    clearAllFiltersBtn.onclick = limpiarTodosFiltros;
   }
   
   // ============================================================================
@@ -543,6 +847,16 @@ window.addEventListener('schema:change', () => {
   
   const clearSearchBtn = document.getElementById('clearSearchBtn');
   if (clearSearchBtn) clearSearchBtn.style.display = 'none';
+  
+  // Limpiar filtros
+  activeFilters = [];
+  renderizarFiltrosActivos();
+  
+  // Limpiar selector de filtros
+  const filterFieldSelect = document.getElementById('filterFieldSelect');
+  const filterValueInput = document.getElementById('filterValueInput');
+  if (filterFieldSelect) filterFieldSelect.value = '';
+  if (filterValueInput) filterValueInput.value = '';
 });
 
 // Ejecutar setup y cargar tablas al cargar el módulo

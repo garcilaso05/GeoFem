@@ -23,7 +23,7 @@
     <div class="stat-card stat-card-success">
       <div class="stat-icon">📋</div>
       <div class="stat-content">
-        <div class="stat-label">Columnas</div>
+        <div class="stat-label">Variables</div>
         <div class="stat-value" id="statTotalColumnas">0</div>
       </div>
     </div>
@@ -55,16 +55,59 @@
     <div class="search-info" id="searchInfo"></div>
   </div>
   
+  <!-- Filtros avanzados por campo -->
+  <div id="advancedFilters" class="advanced-filters-container" style="display: none;">
+    <div class="filters-header">
+      <h3>🎯 Filtros Avanzados</h3>
+      <button id="toggleFiltersBtn" class="toggle-filters-btn">Mostrar Filtros ▼</button>
+    </div>
+    
+    <div id="filtersPanel" class="filters-panel" style="display: none;">
+      <div class="filters-controls">
+        <div class="filter-row">
+          <div class="form-group filter-field-group">
+            <label for="filterFieldSelect">Campo:</label>
+            <select id="filterFieldSelect" class="filter-select">
+              <option value="">Selecciona un campo...</option>
+            </select>
+          </div>
+          
+          <div class="form-group filter-value-group">
+            <label for="filterValueInput">Valor:</label>
+            <div class="filter-value-wrapper">
+              <input type="text" id="filterValueInput" class="filter-input" placeholder="Escribe el valor a buscar..." autocomplete="off">
+              <select id="filterValueSelect" class="filter-select" style="display: none;">
+                <option value="">Selecciona un valor...</option>
+              </select>
+            </div>
+          </div>
+          
+          <div class="filter-actions">
+            <button id="addFilterBtn" class="btn-add-filter" disabled>+ Añadir Filtro</button>
+          </div>
+        </div>
+      </div>
+      
+      <div id="activeFiltersContainer" class="active-filters-container" style="display: none;">
+        <div class="active-filters-header">
+          <h4>Filtros Activos:</h4>
+          <button id="clearAllFiltersBtn" class="btn-clear-all-filters">Limpiar Todos</button>
+        </div>
+        <div id="activeFiltersList" class="active-filters-list"></div>
+      </div>
+    </div>
+  </div>
+  
   <!-- Contenedor de datos -->
   <div id="dataContainer" class="data-container-visualizar" style="display: none;"></div>
   
   <!-- Controles de paginación -->
   <div id="paginationControls" class="pagination-controls" style="display: none;">
-    <button id="firstPageBtn" class="pagination-btn">⏮️ Primera</button>
-    <button id="prevPageBtn" class="pagination-btn">◀️ Anterior</button>
+    <button id="firstPageBtn" class="pagination-btn">Primera</button>
+    <button id="prevPageBtn" class="pagination-btn">Anterior</button>
     <span class="pagination-info" id="paginationInfo">Página 1 de 1</span>
-    <button id="nextPageBtn" class="pagination-btn">Siguiente ▶️</button>
-    <button id="lastPageBtn" class="pagination-btn">Última ⏭️</button>
+    <button id="nextPageBtn" class="pagination-btn">Siguiente</button>
+    <button id="lastPageBtn" class="pagination-btn">Última</button>
   </div>
   
   <!-- Tooltip para FK (se muestra dinámicamente) -->
