@@ -1,0 +1,69 @@
+<div class="geomapa-layout">
+  <!-- Panel Izquierdo: Controles y Estadísticas -->
+  <div class="geomapa-panel-izquierdo">
+    <h2><img src="maps-and-flags.png" alt="">Geolocalización</h2>
+
+    <button id="cargarMapaBtn" class="geomapa-btn-cargar">
+      Cargar en Mapa
+    </button>
+
+    <!-- Top 5 Provincias -->
+    <div id="geoTop5" class="geomapa-top5" style="display: none;">
+      <h3>Top 5 Provincias</h3>
+      <div id="geoTop5Lista" class="top5-lista">
+        <!-- Se llenará dinámicamente -->
+      </div>
+    </div>
+
+    <!-- Estadísticas -->
+    <div id="geoEstadisticas" class="geomapa-estadisticas" style="display: none;">
+      <h3>Estadísticas</h3>
+      <div class="geo-stat-item">
+        <span class="geo-stat-label">Total víctimas:</span>
+        <span class="geo-stat-value" id="geoTotalVictimas">0</span>
+      </div>
+      <div class="geo-stat-item">
+        <span class="geo-stat-label">Provincias con casos:</span>
+        <span class="geo-stat-value" id="geoProvinciasConCasos">0</span>
+      </div>
+      <div class="geo-stat-item">
+        <span class="geo-stat-label">Sin provincia:</span>
+        <span class="geo-stat-value" id="geoSinProvincia">0</span>
+      </div>
+    </div>
+
+    <!-- Leyenda de clusters -->
+    <div class="geomapa-leyenda">
+      <h3>Leyenda</h3>
+      <div class="leyenda-item">
+        <span class="cluster-color" style="background: #51bbd6;"></span>
+        <span>1-5 víctimas</span>
+      </div>
+      <div class="leyenda-item">
+        <span class="cluster-color" style="background: #f1c40f;"></span>
+        <span>6-20 víctimas</span>
+      </div>
+      <div class="leyenda-item">
+        <span class="cluster-color" style="background: #e67e22;"></span>
+        <span>21-50 víctimas</span>
+      </div>
+      <div class="leyenda-item">
+        <span class="cluster-color" style="background: #e74c3c;"></span>
+        <span>+50 víctimas</span>
+      </div>
+    </div>
+  </div>
+  
+  <!-- Panel Derecho: Mapa -->
+  <div class="geomapa-panel-derecho">
+    <div id="map" style="height: 100%; width: 100%; border-radius: 12px; overflow: hidden;">
+      <div class="geomapa-vacio">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+        </svg>
+        <h3>Mapa de España</h3>
+        <p>Selecciona una tabla y el campo de provincia para visualizar las víctimas por provincia</p>
+      </div>
+    </div>
+  </div>
+</div>
