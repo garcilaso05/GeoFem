@@ -1,5 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js";
-import { sanitizeIdentifier } from "./seguridad.js";
+import { sanitizeIdentifier, formatDisplayName } from "./seguridad.js";
 
 // Variables globales
 let tablasRelacionadas = [];
@@ -59,9 +59,12 @@ async function cargarTablas() {
   // OPTIMIZACIÓN: Usar caché en lugar de llamadas RPC
   const todasTablas = window.dbCache.getTables(schema);
   
+  console.log(`📊 Total de tablas en schema ${schema}:`, todasTablas.length, todasTablas);
+  console.log(`🔑 Tabla raíz que se filtrará: "${rootTable}"`);
+  
   tablasRelacionadas = todasTablas.filter(table => table !== rootTable);
   
-  console.log('Tablas cargadas desde caché (sin raíz):', tablasRelacionadas);
+  console.log('✅ Tablas relacionadas (sin raíz):', tablasRelacionadas.length, tablasRelacionadas);
   
   await generarContenedoresFiltros();
   
@@ -77,8 +80,6 @@ async function generarContenedoresFiltros() {
   for (const tabla of tablasRelacionadas) {
     const columnas = obtenerColumnas(tabla);
     
-    if (columnas.length === 0) continue;
-    
     const tableContainer = document.createElement('div');
     tableContainer.className = 'filter-table-container';
     tableContainer.dataset.table = tabla;
@@ -86,12 +87,23 @@ async function generarContenedoresFiltros() {
     const header = document.createElement('div');
     header.className = 'filter-table-header';
     header.innerHTML = `
-      <span>${tabla}</span>
+      <span>${formatDisplayName(tabla)}</span>
       <span class="toggle-icon collapsed">▼</span>
     `;
     
     const body = document.createElement('div');
     body.className = 'filter-table-body';
+    
+    // Si no hay columnas, mostrar mensaje
+    if (columnas.length === 0) {
+      const mensaje = document.createElement('div');
+      mensaje.className = 'filter-field';
+      mensaje.style.color = '#999';
+      mensaje.style.fontStyle = 'italic';
+      mensaje.style.padding = '10px';
+      mensaje.textContent = '⚠️ No hay columnas disponibles para esta tabla';
+      body.appendChild(mensaje);
+    }
     
     for (const col of columnas) {
       if (col.column_name === 'id' && col.is_primary) continue;
@@ -100,7 +112,7 @@ async function generarContenedoresFiltros() {
       filterField.className = 'filter-field';
       
       const label = document.createElement('label');
-      label.textContent = col.column_name;
+      label.textContent = formatDisplayName(col.column_name);
       
       let input;
       const isEnum = col.data_type === 'USER-DEFINED' && col.udt_name && !col.udt_name.startsWith('_');
@@ -178,6 +190,13 @@ async function generarContenedoresFiltros() {
     tableContainer.appendChild(header);
     tableContainer.appendChild(body);
     container.appendChild(tableContainer);
+  }
+  
+  const tablasRenderizadas = container.children.length;
+  console.log(`📋 Editar Caso: ${tablasRenderizadas} tablas renderizadas de ${tablasRelacionadas.length} disponibles`);
+  
+  if (tablasRenderizadas < tablasRelacionadas.length) {
+    console.warn(`⚠️ Se omitieron ${tablasRelacionadas.length - tablasRenderizadas} tablas (sin columnas o vacías)`);
   }
 }
 

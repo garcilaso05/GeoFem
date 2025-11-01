@@ -1,5 +1,5 @@
 <div class="module-content">
-  <h2>📊 Visualizar Datos de Tablas</h2>
+  <h2><img src="server-storage-v.png" alt="" class="module-icon">Explorador de Datos</h2>
   
   <div class="form-group">
     <label for="tableSelect">Selecciona una tabla:</label>
@@ -10,89 +10,63 @@
   
   <button id="loadDataBtn" disabled>Cargar Datos</button>
   
-  <div id="dataContainer" style="margin-top: 20px; overflow-x: auto; display: none;"></div>
+  <!-- Tarjetas de estadísticas -->
+  <div id="statsCards" class="stats-cards-container" style="display: none;">
+    <div class="stat-card stat-card-primary">
+      <div class="stat-icon">📊</div>
+      <div class="stat-content">
+        <div class="stat-label">Total Registros</div>
+        <div class="stat-value" id="statTotalRegistros">0</div>
+      </div>
+    </div>
+    
+    <div class="stat-card stat-card-success">
+      <div class="stat-icon">📋</div>
+      <div class="stat-content">
+        <div class="stat-label">Columnas</div>
+        <div class="stat-value" id="statTotalColumnas">0</div>
+      </div>
+    </div>
+    
+    <div class="stat-card stat-card-info">
+      <div class="stat-icon">👁️</div>
+      <div class="stat-content">
+        <div class="stat-label">Mostrando</div>
+        <div class="stat-value" id="statMostrando">0</div>
+      </div>
+    </div>
+    
+    <div class="stat-card stat-card-warning">
+      <div class="stat-icon">📄</div>
+      <div class="stat-content">
+        <div class="stat-label">Página Actual</div>
+        <div class="stat-value" id="statPaginaActual">1</div>
+      </div>
+    </div>
+  </div>
+  
+  <!-- Barra de búsqueda -->
+  <div id="searchBar" class="search-bar-container" style="display: none;">
+    <div class="search-input-wrapper">
+      <span class="search-icon">🔍</span>
+      <input type="text" id="searchInput" placeholder="Buscar en todos los campos..." class="search-input">
+      <button id="clearSearchBtn" class="clear-search-btn" style="display: none;">✕</button>
+    </div>
+    <div class="search-info" id="searchInfo"></div>
+  </div>
+  
+  <!-- Contenedor de datos -->
+  <div id="dataContainer" class="data-container-visualizar" style="display: none;"></div>
+  
+  <!-- Controles de paginación -->
+  <div id="paginationControls" class="pagination-controls" style="display: none;">
+    <button id="firstPageBtn" class="pagination-btn">⏮️ Primera</button>
+    <button id="prevPageBtn" class="pagination-btn">◀️ Anterior</button>
+    <span class="pagination-info" id="paginationInfo">Página 1 de 1</span>
+    <button id="nextPageBtn" class="pagination-btn">Siguiente ▶️</button>
+    <button id="lastPageBtn" class="pagination-btn">Última ⏭️</button>
+  </div>
   
   <!-- Tooltip para FK (se muestra dinámicamente) -->
-  <div id="foreignKeyTooltip" style="
-    display: none;
-    position: fixed;
-    background: white;
-    border: 2px solid #007bff;
-    border-radius: 8px;
-    padding: 15px;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-    z-index: 10000;
-    max-width: 400px;
-    font-size: 13px;
-    line-height: 1.6;
-  "></div>
+  <div id="foreignKeyTooltip"></div>
 </div>
-
-<style>
-  .data-table {
-    width: 100%;
-    border-collapse: collapse;
-    margin-top: 20px;
-    background: white;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-  }
-  
-  .data-table th {
-    background: #007bff;
-    color: white;
-    padding: 12px;
-    text-align: left;
-    font-weight: 600;
-    border: 1px solid #0056b3;
-  }
-  
-  .data-table td {
-    padding: 10px 12px;
-    border: 1px solid #ddd;
-  }
-  
-  .data-table tr:nth-child(even) {
-    background: #f8f9fa;
-  }
-  
-  .data-table tr:hover {
-    background: #e9ecef;
-  }
-  
-  .foreign-key-cell {
-    color: #007bff;
-    text-decoration: underline;
-    cursor: pointer;
-    font-weight: 500;
-    padding: 2px 6px;
-    border-radius: 3px;
-    transition: all 0.2s;
-  }
-  
-  .foreign-key-cell:hover {
-    background-color: #e7f3ff;
-    color: #0056b3;
-  }
-  
-  #foreignKeyTooltip {
-    display: none;
-    position: fixed;
-    background: white;
-    border: 2px solid #007bff;
-    border-radius: 8px;
-    padding: 15px;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-    z-index: 10000;
-    max-width: 400px;
-    font-size: 13px;
-    line-height: 1.6;
-  }
-  
-  #foreignKeyTooltip strong {
-    color: #007bff;
-  }
-  
-  #dataContainer {
-    position: relative;
-  }
-</style>

@@ -1,41 +1,56 @@
-<h2>Generar Gráficos</h2>
+<div class="graficos-layout">
+  <!-- Panel Izquierdo: Controles -->
+  <div class="graficos-panel-izquierdo">
+    <h2><img src="bar-chart-v.png" alt="">Generador de Gráficos</h2>
+    
+    <div class="graficos-form-group">
+      <label for="tableSelectGraph">Tabla</label>
+      <select id="tableSelectGraph">
+        <option value="">Selecciona una tabla...</option>
+      </select>
+    </div>
 
-<div class="form-group">
-  <label for="tableSelectGraph">Selecciona una tabla:</label>
-  <select id="tableSelectGraph">
-    <option value="">Selecciona una tabla...</option>
-  </select>
-</div>
+    <div class="graficos-form-group">
+      <label for="fieldSelectGraph">Campo</label>
+      <select id="fieldSelectGraph" disabled>
+        <option value="">Primero selecciona tabla...</option>
+      </select>
+    </div>
 
-<div class="form-group">
-  <label for="fieldSelectGraph">Selecciona un campo:</label>
-  <select id="fieldSelectGraph" disabled>
-    <option value="">Primero selecciona una tabla...</option>
-  </select>
-</div>
+    <div class="graficos-form-group">
+      <label for="chartTypeSelect">Tipo de gráfico</label>
+      <select id="chartTypeSelect">
+        <option value="pie">📊 Circular (Pie)</option>
+        <option value="doughnut">🍩 Dona (Doughnut)</option>
+        <option value="bar">📈 Barras verticales</option>
+        <option value="horizontalBar">📉 Barras horizontales</option>
+        <option value="line">📈 Líneas</option>
+        <option value="scatter">⚫ Puntos (Scatter)</option>
+        <option value="polarArea">🎯 Área polar</option>
+        <option value="radar">🕸️ Radar</option>
+      </select>
+    </div>
 
-<div class="form-group">
-  <label for="chartTypeSelect">Tipo de gráfico:</label>
-  <select id="chartTypeSelect">
-    <option value="pie">📊 Circular (Pie)</option>
-    <option value="doughnut">🍩 Dona (Doughnut)</option>
-    <option value="bar">📈 Barras verticales</option>
-    <option value="horizontalBar">📉 Barras horizontales</option>
-    <option value="line">📈 Líneas</option>
-    <option value="scatter">⚫ Puntos (Scatter)</option>
-    <option value="polarArea">🎯 Área polar</option>
-    <option value="radar">🕸️ Radar</option>
-  </select>
-</div>
-
-<div class="form-group">
-  <button id="generateGraphBtn" class="btn-primary" disabled>Generar Gráfico</button>
-</div>
-
-<div id="graphContainer">
-  <!-- Aquí se mostrará el gráfico -->
-</div>
-
-<div id="statsContainer">
-  <!-- Aquí se mostrarán las estadísticas -->
+    <button id="generateGraphBtn" class="graficos-btn-generar" disabled>
+      Generar Gráfico
+    </button>
+    
+    <div class="graficos-favoritos-info">
+      <div>⭐ Favoritos: <strong id="favoritosCount">0</strong>/3</div>
+      <div id="schemaFavoritosInfo" style="margin-top: 5px; font-size: 11px; opacity: 0.9;">
+        Los favoritos se guardan por esquema
+      </div>
+    </div>
+  </div>
+  
+  <!-- Panel Derecho: Gráficos -->
+  <div class="graficos-panel-derecho" id="graficosContainer">
+    <div class="graficos-vacio">
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+      </svg>
+      <h3>No hay gráficos</h3>
+      <p>Selecciona una tabla y un campo para generar tu primer gráfico</p>
+    </div>
+  </div>
 </div>

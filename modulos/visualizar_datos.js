@@ -1,5 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js";
-import { sanitizeIdentifier } from "./seguridad.js";
+import { sanitizeIdentifier, formatDisplayName } from "./seguridad.js";
 
 // Usar una sola instancia global de supabase
 function getSupabaseInstance() {
@@ -16,6 +16,10 @@ function getSupabaseInstance() {
 
 let currentTableData = [];
 let currentTableColumns = [];
+let filteredData = []; // Datos después de aplicar búsqueda
+let currentPage = 1;
+let rowsPerPage = 50;
+let searchTerm = '';
 
 // Obtener todas las tablas disponibles
 async function cargarTablas() {
@@ -38,7 +42,7 @@ async function cargarTablas() {
   data.forEach(tableName => {
     const opt = document.createElement("option");
     opt.value = tableName;
-    opt.textContent = tableName;
+    opt.textContent = formatDisplayName(tableName);
     select.appendChild(opt);
   });
 }
@@ -111,7 +115,7 @@ async function obtenerDatosReferencia(fkComment, valorClave) {
   }
 }
 
-// Crear la tabla HTML con los datos
+// Crear la tabla HTML con los datos (CON PAGINACIÓN)
 function crearTablaHTML(datos, columnas) {
   if (!datos || datos.length === 0) {
     return '<p>No hay datos para mostrar.</p>';
@@ -124,7 +128,7 @@ function crearTablaHTML(datos, columnas) {
   // Cabeceras
   html += '<thead><tr>';
   headers.forEach(header => {
-    html += `<th>${header}</th>`;
+    html += `<th>${formatDisplayName(header)}</th>`;
   });
   html += '</tr></thead>';
   
@@ -155,6 +159,162 @@ function crearTablaHTML(datos, columnas) {
   
   html += '</table>';
   return html;
+}
+
+// ============================================================================
+// FUNCIONES DE BÚSQUEDA Y FILTRADO
+// ============================================================================
+
+// Filtrar datos según término de búsqueda
+function filtrarDatos(datos, termino) {
+  if (!termino || termino.trim() === '') {
+    return datos;
+  }
+  
+  const terminoLower = termino.toLowerCase();
+  
+  return datos.filter(fila => {
+    // Buscar en todos los campos de la fila
+    return Object.values(fila).some(valor => {
+      if (valor === null || valor === undefined) return false;
+      return String(valor).toLowerCase().includes(terminoLower);
+    });
+  });
+}
+
+// Actualizar información de búsqueda
+function actualizarInfoBusqueda() {
+  const searchInfo = document.getElementById('searchInfo');
+  if (!searchInfo) return;
+  
+  if (searchTerm.trim() !== '') {
+    const totalOriginal = currentTableData.length;
+    const totalFiltrado = filteredData.length;
+    searchInfo.textContent = `Se encontraron ${totalFiltrado} de ${totalOriginal} registros`;
+    searchInfo.style.color = totalFiltrado > 0 ? '#27ae60' : '#e74c3c';
+  } else {
+    searchInfo.textContent = '';
+  }
+}
+
+// ============================================================================
+// FUNCIONES DE PAGINACIÓN
+// ============================================================================
+
+// Obtener datos de la página actual
+function getDatosPaginaActual() {
+  const startIndex = (currentPage - 1) * rowsPerPage;
+  const endIndex = startIndex + rowsPerPage;
+  return filteredData.slice(startIndex, endIndex);
+}
+
+// Calcular total de páginas
+function getTotalPaginas() {
+  return Math.ceil(filteredData.length / rowsPerPage);
+}
+
+// Renderizar tabla con paginación
+function renderizarTablaPaginada() {
+  const dataContainer = document.getElementById('dataContainer');
+  const datosPagina = getDatosPaginaActual();
+  
+  const tablaHTML = crearTablaHTML(datosPagina, currentTableColumns);
+  dataContainer.innerHTML = tablaHTML;
+  
+  actualizarControlesPaginacion();
+  actualizarEstadisticas();
+}
+
+// Actualizar controles de paginación
+function actualizarControlesPaginacion() {
+  const totalPaginas = getTotalPaginas();
+  
+  const firstPageBtn = document.getElementById('firstPageBtn');
+  const prevPageBtn = document.getElementById('prevPageBtn');
+  const nextPageBtn = document.getElementById('nextPageBtn');
+  const lastPageBtn = document.getElementById('lastPageBtn');
+  const paginationInfo = document.getElementById('paginationInfo');
+  
+  if (!firstPageBtn || !prevPageBtn || !nextPageBtn || !lastPageBtn || !paginationInfo) {
+    return;
+  }
+  
+  // Actualizar info
+  paginationInfo.textContent = `Página ${currentPage} de ${totalPaginas}`;
+  
+  // Habilitar/deshabilitar botones
+  firstPageBtn.disabled = currentPage === 1;
+  prevPageBtn.disabled = currentPage === 1;
+  nextPageBtn.disabled = currentPage >= totalPaginas;
+  lastPageBtn.disabled = currentPage >= totalPaginas;
+}
+
+// Ir a primera página
+function irAPrimeraPagina() {
+  currentPage = 1;
+  renderizarTablaPaginada();
+}
+
+// Ir a página anterior
+function irAPaginaAnterior() {
+  if (currentPage > 1) {
+    currentPage--;
+    renderizarTablaPaginada();
+  }
+}
+
+// Ir a página siguiente
+function irAPaginaSiguiente() {
+  if (currentPage < getTotalPaginas()) {
+    currentPage++;
+    renderizarTablaPaginada();
+  }
+}
+
+// Ir a última página
+function irAUltimaPagina() {
+  currentPage = getTotalPaginas();
+  renderizarTablaPaginada();
+}
+
+// ============================================================================
+// FUNCIONES DE ESTADÍSTICAS
+// ============================================================================
+
+// Actualizar tarjetas de estadísticas
+function actualizarEstadisticas() {
+  const statTotalRegistros = document.getElementById('statTotalRegistros');
+  const statTotalColumnas = document.getElementById('statTotalColumnas');
+  const statMostrando = document.getElementById('statMostrando');
+  const statPaginaActual = document.getElementById('statPaginaActual');
+  
+  if (!statTotalRegistros || !statTotalColumnas || !statMostrando || !statPaginaActual) {
+    return;
+  }
+  
+  const totalPaginas = getTotalPaginas();
+  const startIndex = (currentPage - 1) * rowsPerPage + 1;
+  const endIndex = Math.min(currentPage * rowsPerPage, filteredData.length);
+  
+  statTotalRegistros.textContent = currentTableData.length.toLocaleString();
+  statTotalColumnas.textContent = currentTableColumns.length;
+  statMostrando.textContent = filteredData.length > 0 ? `${startIndex}-${endIndex} de ${filteredData.length}` : '0';
+  statPaginaActual.textContent = `${currentPage} / ${totalPaginas}`;
+}
+
+// Mostrar/ocultar elementos de la interfaz
+function mostrarElementosUI(mostrar) {
+  const statsCards = document.getElementById('statsCards');
+  const searchBar = document.getElementById('searchBar');
+  const paginationControls = document.getElementById('paginationControls');
+  const dataContainer = document.getElementById('dataContainer');
+  
+  const display = mostrar ? 'block' : 'none';
+  
+  if (statsCards) statsCards.style.display = mostrar ? 'grid' : 'none';
+  if (searchBar) searchBar.style.display = display;
+  if (paginationControls) paginationControls.style.display = mostrar ? 'flex' : 'none';
+  if (dataContainer) dataContainer.style.display = display;
 }
 
 // Mostrar tooltip con datos de referencia
@@ -214,8 +374,7 @@ function setupVisualizarDatosListeners() {
   // Habilitar/deshabilitar botón según selección
   tableSelect.onchange = (e) => {
     loadDataBtn.disabled = !e.target.value;
-    dataContainer.innerHTML = '';
-    dataContainer.style.display = 'none';
+    mostrarElementosUI(false);
   };
   
   // Cargar datos al hacer clic en el botón
@@ -236,20 +395,93 @@ function setupVisualizarDatosListeners() {
       
       currentTableColumns = columnas;
       currentTableData = datos;
+      filteredData = datos; // Inicialmente, datos filtrados = todos los datos
+      currentPage = 1; // Resetear a primera página
+      searchTerm = ''; // Limpiar búsqueda
       
-      // Crear y mostrar la tabla
-      const tablaHTML = crearTablaHTML(datos, columnas);
-      dataContainer.innerHTML = tablaHTML;
-      dataContainer.style.display = 'block';
+      // Limpiar campo de búsqueda
+      const searchInput = document.getElementById('searchInput');
+      if (searchInput) searchInput.value = '';
+      
+      const clearSearchBtn = document.getElementById('clearSearchBtn');
+      if (clearSearchBtn) clearSearchBtn.style.display = 'none';
+      
+      // Mostrar elementos UI
+      mostrarElementosUI(true);
+      
+      // Renderizar tabla paginada
+      renderizarTablaPaginada();
       
     } catch (error) {
       console.error('Error cargando datos:', error);
       dataContainer.innerHTML = '<p style="color: red;">Error cargando los datos.</p>';
+      mostrarElementosUI(false);
     } finally {
       loadDataBtn.disabled = false;
       loadDataBtn.textContent = 'Cargar Datos';
     }
   };
+  
+  // ============================================================================
+  // EVENT LISTENERS DE BÚSQUEDA
+  // ============================================================================
+  
+  const searchInput = document.getElementById('searchInput');
+  const clearSearchBtn = document.getElementById('clearSearchBtn');
+  
+  if (searchInput) {
+    // Búsqueda en tiempo real con debounce
+    let searchTimeout;
+    searchInput.oninput = (e) => {
+      const btnClear = document.getElementById('clearSearchBtn');
+      if (btnClear) {
+        btnClear.style.display = e.target.value ? 'flex' : 'none';
+      }
+      
+      clearTimeout(searchTimeout);
+      searchTimeout = setTimeout(() => {
+        searchTerm = e.target.value;
+        filteredData = filtrarDatos(currentTableData, searchTerm);
+        currentPage = 1; // Volver a la primera página
+        renderizarTablaPaginada();
+        actualizarInfoBusqueda();
+      }, 300); // 300ms de debounce
+    };
+  }
+  
+  if (clearSearchBtn) {
+    clearSearchBtn.onclick = () => {
+      const searchInput = document.getElementById('searchInput');
+      if (searchInput) {
+        searchInput.value = '';
+        searchInput.focus();
+      }
+      clearSearchBtn.style.display = 'none';
+      searchTerm = '';
+      filteredData = currentTableData;
+      currentPage = 1;
+      renderizarTablaPaginada();
+      actualizarInfoBusqueda();
+    };
+  }
+  
+  // ============================================================================
+  // EVENT LISTENERS DE PAGINACIÓN
+  // ============================================================================
+  
+  const firstPageBtn = document.getElementById('firstPageBtn');
+  const prevPageBtn = document.getElementById('prevPageBtn');
+  const nextPageBtn = document.getElementById('nextPageBtn');
+  const lastPageBtn = document.getElementById('lastPageBtn');
+  
+  if (firstPageBtn) firstPageBtn.onclick = irAPrimeraPagina;
+  if (prevPageBtn) prevPageBtn.onclick = irAPaginaAnterior;
+  if (nextPageBtn) nextPageBtn.onclick = irAPaginaSiguiente;
+  if (lastPageBtn) lastPageBtn.onclick = irAUltimaPagina;
+  
+  // ============================================================================
+  // EVENT LISTENERS DE TOOLTIPS FK (SIN CAMBIOS)
+  // ============================================================================
   
   // Event delegation para las celdas de claves foráneas
   dataContainer.addEventListener('mouseenter', async (e) => {
@@ -303,8 +535,14 @@ window.addEventListener('easySQL:moduleChange', () => {
 window.addEventListener('schema:change', () => {
   console.log('Esquema cambiado, recargando tablas...');
   cargarTablas();
-  document.getElementById('dataContainer').innerHTML = '';
-  document.getElementById('dataContainer').style.display = 'none';
+  mostrarElementosUI(false);
+  
+  // Limpiar campo de búsqueda
+  const searchInput = document.getElementById('searchInput');
+  if (searchInput) searchInput.value = '';
+  
+  const clearSearchBtn = document.getElementById('clearSearchBtn');
+  if (clearSearchBtn) clearSearchBtn.style.display = 'none';
 });
 
 // Ejecutar setup y cargar tablas al cargar el módulo

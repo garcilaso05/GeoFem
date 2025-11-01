@@ -1,5 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js";
-import { sanitizeIdentifier, escapeSqlValue } from "./seguridad.js";
+import { sanitizeIdentifier, escapeSqlValue, formatDisplayName } from "./seguridad.js";
 
 // Usar una sola instancia global de supabase
 function getSupabaseInstance() {
@@ -34,7 +34,7 @@ async function cargarTablas() {
   data.forEach(tableName => {
     const opt = document.createElement("option");
     opt.value = tableName;
-    opt.textContent = tableName;
+    opt.textContent = formatDisplayName(tableName);
     select.appendChild(opt);
   });
 }
@@ -64,7 +64,7 @@ async function cargarCamposTabla(tabla) {
   for (const col of data) {
     let input;
     let label = document.createElement('label');
-    label.textContent = col.column_name + ': ';
+    label.textContent = formatDisplayName(col.column_name) + ': ';
     // Detectar clave foránea por fk_comment
     if (col.fk_comment && col.fk_comment.startsWith('FK -> ')) {
       input = document.createElement('select');

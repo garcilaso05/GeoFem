@@ -1,5 +1,11 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js";
-import { sanitizeIdentifier } from "./seguridad.js";
+import { sanitizeIdentifier, formatDisplayName } from "./seguridad.js";
+import { auth, db } from '../firebase-config.js';
+import { doc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+// ============================================================================
+// ESTADO GLOBAL
+// ============================================================================
 
 // Usar una sola instancia global de supabase
 function getSupabaseInstance() {
@@ -14,7 +20,126 @@ function getSupabaseInstance() {
   return window._supabaseInstance;
 }
 
-let chartInstance = null;
+// Estado de gráficos
+const graficosState = {
+  graficos: [], // Array de objetos: {id, tipo, tabla, campo, chartInstance, datos, esFavorito}
+  nextId: 1,
+  maxFavoritos: 3,
+  favoritosActuales: 0,
+  currentUserId: null // ⚠️ IMPORTANTE: Se inicializa al cargar el módulo
+};
+
+// ============================================================================
+// FIREBASE - GESTIÓN DE FAVORITOS
+// ============================================================================
+
+// Obtener el nombre del documento de favoritos según el esquema actual
+function getDocumentoFavoritos() {
+  const schema = window.getCurrentSchema();
+  return schema === 'mdr' ? 'graficosMDR' : 'graficosHRF';
+}
+
+// Cargar favoritos desde Firebase
+async function cargarFavoritosDesdeFirebase() {
+  const user = auth.currentUser;
+  if (!user) {
+    console.warn('⚠️ No hay usuario autenticado, no se pueden cargar favoritos');
+    return;
+  }
+  
+  // Guardar el userId en el estado
+  graficosState.currentUserId = user.uid;
+  console.log('👤 Usuario actual:', user.uid);
+  
+  // Obtener el nombre del documento según el esquema
+  const docName = getDocumentoFavoritos();
+  console.log(`📂 Cargando favoritos del esquema: ${docName}`);
+  
+  try {
+    const favoritesRef = doc(db, 'users', user.uid, 'favorites', docName);
+    const favDoc = await getDoc(favoritesRef);
+    
+    if (favDoc.exists()) {
+      const data = favDoc.data();
+      console.log('📥 Favoritos cargados desde Firebase:', data);
+      
+      // Cargar hasta 3 gráficos favoritos
+      for (let i = 1; i <= 3; i++) {
+        const tipo = data[`TipoGrafico${i}`];
+        const tabla = data[`TablaGrafico${i}`];
+        const campo = data[`CampoGrafico${i}`];
+        
+        if (tipo && tabla && campo) {
+          console.log(`📊 Generando gráfico favorito ${i}:`, { tipo, tabla, campo });
+          await generarGrafico(tabla, campo, tipo, true);
+        }
+      }
+    } else {
+      console.log(`ℹ️ No hay favoritos guardados para ${docName}, creando documento vacío...`);
+      // Crear documento vacío
+      await setDoc(favoritesRef, {
+        TipoGrafico1: null,
+        TablaGrafico1: null,
+        CampoGrafico1: null,
+        TipoGrafico2: null,
+        TablaGrafico2: null,
+        CampoGrafico2: null,
+        TipoGrafico3: null,
+        TablaGrafico3: null,
+        CampoGrafico3: null
+      });
+    }
+  } catch (error) {
+    console.error('❌ Error cargando favoritos:', error);
+  }
+}
+
+// Guardar favoritos en Firebase
+async function guardarFavoritosEnFirebase() {
+  if (!graficosState.currentUserId) {
+    console.error('❌ No hay userId guardado, no se puede guardar en Firebase');
+    return;
+  }
+  
+  // Obtener el nombre del documento según el esquema
+  const docName = getDocumentoFavoritos();
+  
+  try {
+    const favoritos = graficosState.graficos.filter(g => g.esFavorito);
+    const data = {
+      TipoGrafico1: null,
+      TablaGrafico1: null,
+      CampoGrafico1: null,
+      TipoGrafico2: null,
+      TablaGrafico2: null,
+      CampoGrafico2: null,
+      TipoGrafico3: null,
+      TablaGrafico3: null,
+      CampoGrafico3: null
+    };
+    
+    favoritos.forEach((grafico, index) => {
+      if (index < 3) {
+        data[`TipoGrafico${index + 1}`] = grafico.tipo;
+        data[`TablaGrafico${index + 1}`] = grafico.tabla;
+        data[`CampoGrafico${index + 1}`] = grafico.campo;
+      }
+    });
+    
+    const favoritesRef = doc(db, 'users', graficosState.currentUserId, 'favorites', docName);
+    await setDoc(favoritesRef, data);
+    
+    console.log(`💾 Favoritos guardados en Firebase (${docName}):`, data);
+    console.log('📍 Ruta:', `users/${graficosState.currentUserId}/favorites/${docName}`);
+  } catch (error) {
+    console.error('❌ Error guardando favoritos:', error);
+    alert('Error al guardar favoritos: ' + error.message);
+  }
+}
+
+// ============================================================================
+// UTILIDADES
+// ============================================================================
 
 // Cargar Chart.js si no está disponible
 async function loadChartJS() {
@@ -31,6 +156,31 @@ async function loadChartJS() {
   });
 }
 
+// Actualizar contador de favoritos
+function actualizarContadorFavoritos() {
+  const count = graficosState.graficos.filter(g => g.esFavorito).length;
+  graficosState.favoritosActuales = count;
+  
+  const contador = document.getElementById('favoritosCount');
+  if (contador) {
+    contador.textContent = count;
+  } else {
+    console.warn('⚠️ Elemento favoritosCount no encontrado en el DOM');
+  }
+  
+  // Actualizar información del esquema
+  const schemaInfo = document.getElementById('schemaFavoritosInfo');
+  if (schemaInfo) {
+    const schema = window.getCurrentSchema();
+    const schemaName = schema === 'mdr' ? 'Madres' : 'Huérfanos';
+    schemaInfo.textContent = `Esquema: ${schemaName} (favoritos independientes)`;
+  }
+}
+
+// ============================================================================
+// CARGAR DATOS DE SUPABASE
+// ============================================================================
+
 // Obtener todas las tablas disponibles
 async function cargarTablas() {
   const supabase = getSupabaseInstance();
@@ -39,18 +189,23 @@ async function cargarTablas() {
   const select = document.getElementById("tableSelectGraph");
   select.innerHTML = '<option value="">Selecciona una tabla...</option>';
   
+  // Esperar a que la caché esté lista
+  if (window.dbCache && !window.dbCache.isCacheReady()) {
+    await window.dbCache.waitForCache();
+  }
+  
   const schema = window.getCurrentSchema();
-  const { data, error } = await supabase.rpc(`${schema}_get_public_tables`);
-  if (error || !data) {
-    console.error("Error completo:", error);
-    alert("Error obteniendo tablas: " + (error?.message || ''));
+  const data = window.dbCache.getTables(schema);
+  
+  if (!data || data.length === 0) {
+    console.error("Error obteniendo tablas");
     return;
   }
   
-  data.forEach(row => {
+  data.forEach(tableName => {
     const opt = document.createElement("option");
-    opt.value = row.table_name;
-    opt.textContent = row.table_name;
+    opt.value = tableName;
+    opt.textContent = formatDisplayName(tableName);
     select.appendChild(opt);
   });
 }
@@ -87,7 +242,7 @@ async function cargarCamposTabla(tabla) {
     data.forEach(col => {
       const opt = document.createElement("option");
       opt.value = col.column_name;
-      opt.textContent = `${col.column_name} (${col.data_type})`;
+      opt.textContent = formatDisplayName(col.column_name);
       select.appendChild(opt);
     });
     
@@ -168,16 +323,121 @@ function generarColores(cantidad) {
   return colores;
 }
 
-// Crear gráfico según el tipo seleccionado
-function crearGrafico(datos, tipoGrafico = 'pie') {
-  const canvas = document.getElementById('chartCanvas');
-  const ctx = canvas.getContext('2d');
+// ============================================================================
+// RENDERIZADO DE GRÁFICOS
+// ============================================================================
+
+// Renderizar todos los gráficos en el panel derecho
+function renderizarGraficos() {
+  const container = document.getElementById('graficosContainer');
   
-  // Destruir gráfico anterior si existe
-  if (chartInstance) {
-    chartInstance.destroy();
+  // Verificar que el contenedor existe antes de intentar acceder
+  if (!container) {
+    console.warn('⚠️ Container graficosContainer no encontrado, esperando...');
+    return;
   }
   
+  if (graficosState.graficos.length === 0) {
+    container.innerHTML = `
+      <div class="graficos-vacio">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+        </svg>
+        <h3>No hay gráficos</h3>
+        <p>Selecciona una tabla y un campo para generar tu primer gráfico</p>
+      </div>
+    `;
+    return;
+  }
+  
+  container.innerHTML = '';
+  
+  graficosState.graficos.forEach(grafico => {
+    const card = crearTarjetaGrafico(grafico);
+    container.appendChild(card);
+    
+    // Crear el gráfico dentro del canvas
+    const canvas = card.querySelector(`#canvas-${grafico.id}`);
+    if (canvas) {
+      const ctx = canvas.getContext('2d');
+      grafico.chartInstance = crearInstanciaChart(ctx, grafico.datos, grafico.tipo);
+    } else {
+      console.error('❌ Canvas no encontrado para gráfico ID:', grafico.id);
+    }
+  });
+  
+  actualizarContadorFavoritos();
+}
+
+// Crear tarjeta HTML para un gráfico
+function crearTarjetaGrafico(grafico) {
+  const card = document.createElement('div');
+  card.className = 'grafico-card';
+  card.id = `grafico-${grafico.id}`;
+  
+  const tiposGrafico = {
+    'pie': '📊 Circular',
+    'doughnut': '🍩 Dona',
+    'bar': '📈 Barras V.',
+    'horizontalBar': '📉 Barras H.',
+    'line': '📈 Líneas',
+    'scatter': '⚫ Puntos',
+    'polarArea': '🎯 Polar',
+    'radar': '🕸️ Radar'
+  };
+  
+  card.innerHTML = `
+    <div class="grafico-header">
+      <div class="grafico-info">
+        <h3>${formatDisplayName(grafico.tabla)} - ${formatDisplayName(grafico.campo)}</h3>
+        <p>${tiposGrafico[grafico.tipo] || grafico.tipo} | ${grafico.datos.totalRegistros} registros</p>
+      </div>
+      <div class="grafico-actions">
+        <button class="grafico-btn grafico-btn-favorito ${grafico.esFavorito ? 'activo' : ''}" 
+                onclick="toggleFavorito(${grafico.id})"
+                title="${grafico.esFavorito ? 'Quitar de favoritos' : 'Añadir a favoritos'}">
+          <img src="star.png" alt="Favorito" style="width: 20px; height: 20px; filter: ${grafico.esFavorito ? 'none' : 'grayscale(100%) brightness(0.7)'};">
+        </button>
+        <button class="grafico-btn grafico-btn-borrar" 
+                onclick="borrarGrafico(${grafico.id})"
+                ${grafico.esFavorito ? 'disabled' : ''}
+                title="Borrar gráfico">
+          <img src="trash.png" alt="Borrar" style="width: 20px; height: 20px;">
+        </button>
+      </div>
+    </div>
+    
+    <div class="grafico-canvas-container">
+      <canvas id="canvas-${grafico.id}"></canvas>
+    </div>
+    
+    <div class="grafico-stats">
+      <div class="grafico-stats-grid">
+        <div class="grafico-stat-item">
+          <strong>${grafico.datos.totalRegistros}</strong>
+          <span>Total registros</span>
+        </div>
+        <div class="grafico-stat-item">
+          <strong>${grafico.datos.labels.length}</strong>
+          <span>Valores únicos</span>
+        </div>
+        <div class="grafico-stat-item">
+          <strong>${Math.max(...grafico.datos.valores)}</strong>
+          <span>Valor máximo</span>
+        </div>
+        <div class="grafico-stat-item">
+          <strong>${Math.max(...grafico.datos.porcentajes)}%</strong>
+          <span>Mayor porcentaje</span>
+        </div>
+      </div>
+    </div>
+  `;
+  
+  return card;
+}
+
+// Crear instancia de Chart.js
+function crearInstanciaChart(ctx, datos, tipoGrafico = 'pie') {
   const colores = generarColores(datos.labels.length);
   
   // Configuración base del dataset
@@ -393,77 +653,128 @@ function crearGrafico(datos, tipoGrafico = 'pie') {
       break;
   }
   
-  chartInstance = new Chart(ctx, chartConfig);
+  return new Chart(ctx, chartConfig);
 }
 
-// Mostrar estadísticas detalladas
-function mostrarEstadisticas(datos, tabla, campo, tipoGrafico) {
-  const container = document.getElementById('statsContainer');
-  
-  // Obtener nombre descriptivo del tipo de gráfico
-  const tiposGrafico = {
-    'pie': '📊 Circular (Pie)',
-    'doughnut': '🍩 Dona (Doughnut)', 
-    'bar': '📈 Barras verticales',
-    'horizontalBar': '📉 Barras horizontales',
-    'line': '📈 Líneas',
-    'scatter': '⚫ Puntos (Scatter)',
-    'polarArea': '🎯 Área polar',
-    'radar': '🕸️ Radar'
-  };
-  
-  let html = `
-    <div class="stats-container">
-      <h3>Estadísticas detalladas</h3>
-      <p><strong>Tabla:</strong> ${tabla}</p>
-      <p><strong>Campo:</strong> ${campo}</p>
-      <p><strong>Tipo de gráfico:</strong> ${tiposGrafico[tipoGrafico] || tipoGrafico}</p>
-      <p><strong>Total de registros:</strong> ${datos.totalRegistros}</p>
-      <p><strong>Valores únicos:</strong> ${datos.labels.length}</p>
-      
-      <h4>Distribución:</h4>
-      <table class="stats-table">
-        <thead>
-          <tr>
-            <th>Valor</th>
-            <th>Cantidad</th>
-            <th>Porcentaje</th>
-          </tr>
-        </thead>
-        <tbody>
-  `;
-  
-  // Ordenar por cantidad descendente
-  const indices = Array.from(Array(datos.labels.length).keys());
-  indices.sort((a, b) => datos.valores[b] - datos.valores[a]);
-  
-  indices.forEach(i => {
-    html += `
-      <tr>
-        <td>${datos.labels[i]}</td>
-        <td>${datos.valores[i]}</td>
-        <td>${datos.porcentajes[i]}%</td>
-      </tr>
-    `;
-  });
-  
-  html += `
-        </tbody>
-      </table>
-    </div>
-  `;
-  
-  container.innerHTML = html;
+// ============================================================================
+// GESTIÓN DE GRÁFICOS
+// ============================================================================
+
+// Generar un nuevo gráfico
+async function generarGrafico(tabla, campo, tipo, esFavorito = false) {
+  try {
+    // Validar
+    sanitizeIdentifier(tabla);
+    sanitizeIdentifier(campo);
+    
+    // Obtener datos
+    const datos = await obtenerDatosGrafico(tabla, campo);
+    
+    if (!datos || datos.labels.length === 0) {
+      alert('No hay datos disponibles para este campo');
+      return false;
+    }
+    
+    // Crear objeto de gráfico
+    const grafico = {
+      id: graficosState.nextId++,
+      tipo: tipo,
+      tabla: tabla,
+      campo: campo,
+      datos: datos,
+      chartInstance: null,
+      esFavorito: esFavorito
+    };
+    
+    // ⚠️ AÑADIR AL PRINCIPIO (arriba) en lugar de al final
+    graficosState.graficos.unshift(grafico);
+    
+    // Renderizar todos los gráficos
+    renderizarGraficos();
+    
+    return true;
+    
+  } catch (error) {
+    console.error('Error generando gráfico:', error);
+    alert('Error generando el gráfico: ' + error.message);
+    return false;
+  }
 }
+
+// Toggle favorito
+window.toggleFavorito = async function(graficoId) {
+  console.log('⭐ Toggle favorito llamado para gráfico ID:', graficoId);
+  
+  const grafico = graficosState.graficos.find(g => g.id === graficoId);
+  if (!grafico) {
+    console.error('❌ No se encontró el gráfico con ID:', graficoId);
+    return;
+  }
+  
+  console.log('📊 Gráfico encontrado:', { tabla: grafico.tabla, campo: grafico.campo, esFavorito: grafico.esFavorito });
+  
+  // Si ya es favorito, quitarlo
+  if (grafico.esFavorito) {
+    console.log('🔄 Quitando de favoritos...');
+    grafico.esFavorito = false;
+    renderizarGraficos();
+    await guardarFavoritosEnFirebase();
+    console.log('✅ Favorito quitado y guardado en Firebase');
+    return;
+  }
+  
+  // Si no es favorito, verificar límite
+  const favoritosActuales = graficosState.graficos.filter(g => g.esFavorito).length;
+  console.log(`📊 Favoritos actuales: ${favoritosActuales}/${graficosState.maxFavoritos}`);
+  
+  if (favoritosActuales >= graficosState.maxFavoritos) {
+    alert(`Solo puedes tener ${graficosState.maxFavoritos} gráficos favoritos. Quita uno primero.`);
+    return;
+  }
+  
+  // Marcar como favorito
+  console.log('⭐ Marcando como favorito...');
+  grafico.esFavorito = true;
+  renderizarGraficos();
+  await guardarFavoritosEnFirebase();
+  console.log('✅ Favorito añadido y guardado en Firebase');
+};
+
+// Borrar gráfico
+window.borrarGrafico = function(graficoId) {
+  const index = graficosState.graficos.findIndex(g => g.id === graficoId);
+  if (index === -1) return;
+  
+  const grafico = graficosState.graficos[index];
+  
+  // No permitir borrar favoritos
+  if (grafico.esFavorito) {
+    alert('No puedes borrar un gráfico favorito. Quítalo de favoritos primero.');
+    return;
+  }
+  
+  // Destruir instancia de Chart.js
+  if (grafico.chartInstance) {
+    grafico.chartInstance.destroy();
+  }
+  
+  // Eliminar del array
+  graficosState.graficos.splice(index, 1);
+  
+  // Re-renderizar
+  renderizarGraficos();
+};
+
+// ============================================================================
+// INICIALIZACIÓN Y EVENT LISTENERS
+// ============================================================================
 
 // Event listeners
-function setupGraficosListeners() {
+async function setupGraficosListeners() {
   const tableSelect = document.getElementById('tableSelectGraph');
   const fieldSelect = document.getElementById('fieldSelectGraph');
   const chartTypeSelect = document.getElementById('chartTypeSelect');
   const generateBtn = document.getElementById('generateGraphBtn');
-  const graphContainer = document.getElementById('graphContainer');
-  const statsContainer = document.getElementById('statsContainer');
   
   if (!tableSelect || !fieldSelect || !chartTypeSelect || !generateBtn) {
     console.error('No se encontraron los elementos necesarios');
@@ -474,9 +785,7 @@ function setupGraficosListeners() {
   tableSelect.onchange = async (e) => {
     const tabla = e.target.value;
     await cargarCamposTabla(tabla);
-    generateBtn.disabled = true;
-    graphContainer.innerHTML = '';
-    statsContainer.innerHTML = '';
+    generateBtn.disabled = !tabla;
   };
   
   // Cambio de campo
@@ -504,37 +813,16 @@ function setupGraficosListeners() {
       // Cargar Chart.js si es necesario
       await loadChartJS();
       
-      // Crear canvas si no existe
-      if (!document.getElementById('chartCanvas')) {
-        graphContainer.innerHTML = `
-          <div class="chart-container">
-            <div style="width: 100%; height: 400px; position: relative;">
-              <canvas id="chartCanvas"></canvas>
-            </div>
-          </div>
-        `;
+      // Generar el gráfico
+      const success = await generarGrafico(tabla, campo, tipoGrafico, false);
+      
+      if (!success) {
+        alert('Error al generar el gráfico');
       }
-      
-      // Obtener datos
-      const datos = await obtenerDatosGrafico(tabla, campo);
-      
-      if (!datos) {
-        graphContainer.innerHTML = '<p style="color: red;">Error obteniendo datos para el gráfico.</p>';
-        return;
-      }
-      
-      if (datos.labels.length === 0) {
-        graphContainer.innerHTML = '<p>No hay datos para mostrar en esta tabla/campo.</p>';
-        return;
-      }
-      
-      // Crear gráfico y mostrar estadísticas
-      crearGrafico(datos, tipoGrafico);
-      mostrarEstadisticas(datos, tabla, campo, tipoGrafico);
       
     } catch (error) {
       console.error('Error generando gráfico:', error);
-      graphContainer.innerHTML = '<p style="color: red;">Error generando el gráfico.</p>';
+      alert('Error: ' + error.message);
     } finally {
       generateBtn.disabled = false;
       generateBtn.textContent = 'Generar Gráfico';
@@ -542,28 +830,86 @@ function setupGraficosListeners() {
   };
 }
 
-// Limpiar instancia global de supabase al cambiar de módulo
+// Limpiar al cambiar de módulo
 window.addEventListener('easySQL:moduleChange', () => {
+  // Destruir todos los gráficos
+  graficosState.graficos.forEach(g => {
+    if (g.chartInstance) {
+      g.chartInstance.destroy();
+    }
+  });
+  
+  // Resetear estado
+  graficosState.graficos = [];
+  graficosState.nextId = 1;
+  graficosState.favoritosActuales = 0;
+  
   window._supabaseInstance = null;
-  // Destruir gráfico si existe
-  if (chartInstance) {
-    chartInstance.destroy();
-    chartInstance = null;
-  }
 });
 
 // Escuchar cambios de esquema
-window.addEventListener('schema:change', () => {
-  console.log('Esquema cambiado, recargando tablas...');
+window.addEventListener('schema:change', async () => {
+  console.log('🔄 Esquema cambiado, recargando favoritos y tablas...');
+  
+  // Destruir todos los gráficos
+  graficosState.graficos.forEach(g => {
+    if (g.chartInstance) {
+      g.chartInstance.destroy();
+    }
+  });
+  
+  // Resetear
+  graficosState.graficos = [];
+  graficosState.nextId = 1;
+  graficosState.favoritosActuales = 0;
+  
+  renderizarGraficos();
   cargarTablas();
-  document.getElementById('graphContainer').innerHTML = '';
-  document.getElementById('statsContainer').innerHTML = '';
-  if (chartInstance) {
-    chartInstance.destroy();
-    chartInstance = null;
-  }
+  
+  // Cargar favoritos del nuevo esquema
+  await cargarFavoritosDesdeFirebase();
 });
 
-// Ejecutar setup y cargar tablas al cargar el módulo
-setupGraficosListeners();
-cargarTablas();
+// ============================================================================
+// INICIALIZACIÓN DEL MÓDULO
+// ============================================================================
+
+async function inicializarModulo() {
+  console.log('🚀 Inicializando módulo de gráficos...');
+  
+  // Esperar a que el DOM esté completamente cargado
+  if (document.readyState === 'loading') {
+    await new Promise(resolve => {
+      document.addEventListener('DOMContentLoaded', resolve);
+    });
+  }
+  
+  // Verificar que el contenedor existe
+  const container = document.getElementById('graficosContainer');
+  if (!container) {
+    console.error('❌ No se encontró el contenedor graficosContainer');
+    return;
+  }
+  
+  // Cargar Chart.js
+  await loadChartJS();
+  
+  // Setup listeners
+  await setupGraficosListeners();
+  
+  // Cargar tablas
+  await cargarTablas();
+  
+  // Cargar favoritos desde Firebase
+  await cargarFavoritosDesdeFirebase();
+  
+  console.log('✅ Módulo de gráficos inicializado');
+}
+
+// Ejecutar inicialización cuando el DOM esté listo
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', inicializarModulo);
+} else {
+  // El DOM ya está listo
+  inicializarModulo();
+}

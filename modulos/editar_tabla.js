@@ -1,5 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js";
-import { sanitizeIdentifier } from "./seguridad.js";
+import { sanitizeIdentifier, formatDisplayName } from "./seguridad.js";
 
 function getSupabaseInstance() {
   // 1. Si ya existe una instancia global (posiblemente autenticada), usarla
@@ -43,7 +43,7 @@ async function cargarTablas() {
   uniqueTables.forEach(tableName => {
     const opt = document.createElement("option");
     opt.value = tableName;
-    opt.textContent = tableName;
+    opt.textContent = formatDisplayName(tableName);
     select.appendChild(opt);
   });
 }

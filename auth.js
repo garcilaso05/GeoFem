@@ -296,7 +296,7 @@ async function showAdminApp(user, userEmail) {
   
   const adminButtons = document.querySelectorAll('#app-nav .admin-only');
   adminButtons.forEach(btn => {
-    btn.style.display = 'inline-block';
+    btn.style.display = 'flex';
   });
   
   // Inicializar caché de base de datos
@@ -359,11 +359,18 @@ registerForm.addEventListener('submit', async (e) => {
       registro_timestamp: serverTimestamp()
     });
 
-    const favoritesRef = collection(db, 'users', uid, 'favorites');
-    await addDoc(favoritesRef, {
-      grafico1: null,
-      grafico2: null,
-      grafico3: null
+    // Crear documento de favoritos para gráficos
+    const favoritesDocRef = doc(db, 'users', uid, 'favorites', 'graficos');
+    await setDoc(favoritesDocRef, {
+      TipoGrafico1: null,
+      TablaGrafico1: null,
+      CampoGrafico1: null,
+      TipoGrafico2: null,
+      TablaGrafico2: null,
+      CampoGrafico2: null,
+      TipoGrafico3: null,
+      TablaGrafico3: null,
+      CampoGrafico3: null
     });
 
     showMessage('Registro exitoso. Bienvenido!', 'success');

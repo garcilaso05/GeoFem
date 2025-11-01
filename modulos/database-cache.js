@@ -6,9 +6,48 @@
  * - Columnas de todas las tablas (por schema)
  * - Información de FK/PK
  * - Tipos de datos
+ * 
+ * PERSISTENCIA:
+ * - Se guarda en sessionStorage (sobrevive a recargas de página)
+ * - Se borra al cerrar pestaña/navegador o al cerrar sesión
+ * - Evita recargar datos que no han cambiado
  */
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js";
+
+// ============================================================================
+// CONFIGURACIÓN DE PERSISTENCIA
+// ============================================================================
+
+const CACHE_STORAGE_KEY = 'geofem_db_cache';
+const CACHE_VERSION = '1.0'; // Incrementar si cambia la estructura de caché
+
+// ============================================================================
+// MANEJO DE ERRORES DE CACHÉ DESINCRONIZADA
+// ============================================================================
+
+/**
+ * Mostrar alerta cuando la caché puede estar desincronizada
+ * Sugiere al usuario cerrar sesión y volver a iniciar
+ */
+export function mostrarErrorCacheDesincronizada(error) {
+  console.error('❌ Error relacionado con caché:', error);
+  
+  const mensaje = `
+⚠️ Error al acceder a los datos
+
+Parece que la estructura de la base de datos ha cambiado desde que iniciaste sesión.
+
+Solución recomendada:
+1. Cierra sesión
+2. Vuelve a iniciar sesión
+3. Esto actualizará la caché automáticamente
+
+Error técnico: ${error.message || error}
+  `.trim();
+  
+  alert(mensaje);
+}
 
 // ============================================================================
 // ESTADO DE LA CACHÉ
@@ -26,8 +65,95 @@ const cache = {
     mdr: [],
     hrf: []
   },
-  lastUpdate: null
+  lastUpdate: null,
+  version: CACHE_VERSION
 };
+
+// ============================================================================
+// PERSISTENCIA EN SESSIONSTORAGE
+// ============================================================================
+
+/**
+ * Guardar caché en sessionStorage
+ * Se mantiene durante recargas pero se borra al cerrar pestaña
+ */
+function guardarCacheEnStorage() {
+  try {
+    const dataToSave = {
+      version: cache.version,
+      enums: cache.enums,
+      tableColumns: cache.tableColumns,
+      tables: cache.tables,
+      lastUpdate: cache.lastUpdate,
+      timestamp: new Date().toISOString()
+    };
+    
+    sessionStorage.setItem(CACHE_STORAGE_KEY, JSON.stringify(dataToSave));
+    console.log('💾 Caché guardada en sessionStorage');
+  } catch (error) {
+    console.error('❌ Error guardando caché en sessionStorage:', error);
+    // No es crítico, la app puede seguir funcionando
+  }
+}
+
+/**
+ * Cargar caché desde sessionStorage
+ * @returns {boolean} true si se cargó exitosamente, false si no había caché
+ */
+function cargarCacheDesdeStorage() {
+  try {
+    const stored = sessionStorage.getItem(CACHE_STORAGE_KEY);
+    
+    if (!stored) {
+      console.log('ℹ️ No hay caché guardada en sessionStorage');
+      return false;
+    }
+    
+    const data = JSON.parse(stored);
+    
+    // Verificar versión
+    if (data.version !== CACHE_VERSION) {
+      console.log('⚠️ Versión de caché incompatible, descartando...');
+      sessionStorage.removeItem(CACHE_STORAGE_KEY);
+      return false;
+    }
+    
+    // Restaurar datos
+    cache.enums = data.enums || {};
+    cache.tableColumns = data.tableColumns || { mdr: {}, hrf: {} };
+    cache.tables = data.tables || { mdr: [], hrf: [] };
+    cache.lastUpdate = data.lastUpdate;
+    cache.initialized = true;
+    
+    console.log('✅ Caché restaurada desde sessionStorage');
+    console.log('📊 Última actualización:', data.timestamp);
+    console.log('📊 Resumen:', {
+      enums: Object.keys(cache.enums).length,
+      tablasMDR: cache.tables.mdr.length,
+      tablasHRF: cache.tables.hrf.length,
+      columnasMDR: Object.keys(cache.tableColumns.mdr).length,
+      columnasHRF: Object.keys(cache.tableColumns.hrf).length
+    });
+    
+    return true;
+  } catch (error) {
+    console.error('❌ Error cargando caché desde sessionStorage:', error);
+    sessionStorage.removeItem(CACHE_STORAGE_KEY);
+    return false;
+  }
+}
+
+/**
+ * Limpiar caché de sessionStorage
+ */
+function limpiarCacheStorage() {
+  try {
+    sessionStorage.removeItem(CACHE_STORAGE_KEY);
+    console.log('🗑️ Caché eliminada de sessionStorage');
+  } catch (error) {
+    console.error('❌ Error limpiando caché:', error);
+  }
+}
 
 // ============================================================================
 // OBTENER INSTANCIA DE SUPABASE
@@ -170,6 +296,13 @@ async function loadTableColumns(schema, tabla) {
     
     if (error) {
       console.error(`❌ Error cargando columnas de ${schema}.${tabla}:`, error);
+      
+      // Si es timeout (código 57014), intentar con consulta básica
+      if (error.code === '57014') {
+        console.log(`⏱️ Timeout detectado, intentando carga básica para ${schema}.${tabla}...`);
+        return await loadTableColumnsBasic(schema, tabla);
+      }
+      
       return false;
     }
     
@@ -181,7 +314,63 @@ async function loadTableColumns(schema, tabla) {
     return true;
   } catch (err) {
     console.error(`❌ Excepción cargando columnas de ${schema}.${tabla}:`, err);
-    return false;
+    
+    // Intentar carga básica como fallback
+    console.log(`🔄 Intentando carga básica para ${schema}.${tabla}...`);
+    return await loadTableColumnsBasic(schema, tabla);
+  }
+}
+
+/**
+ * Cargar columnas básicas sin JOIN pesados (fallback para timeouts)
+ */
+async function loadTableColumnsBasic(schema, tabla) {
+  const supabase = getSupabaseInstance();
+  if (!supabase) return false;
+  
+  try {
+    console.log(`🔄 Intentando obtener estructura básica de ${schema}.${tabla} con SELECT *...`);
+    
+    // Estrategia: Hacer un SELECT * LIMIT 0 para obtener la estructura
+    // Esto es rápido porque no retorna datos, solo metadata
+    const { data, error } = await supabase
+      .from(`${schema}.${tabla}`)
+      .select('*')
+      .limit(0);
+    
+    if (error) {
+      console.error(`❌ Error en carga básica de ${schema}.${tabla}:`, error);
+      
+      // Si también falla, crear entrada vacía para que al menos aparezca la tabla
+      if (!cache.tableColumns[schema]) {
+        cache.tableColumns[schema] = {};
+      }
+      cache.tableColumns[schema][tabla] = [];
+      console.warn(`⚠️ Tabla ${schema}.${tabla} registrada sin columnas`);
+      return true; // Retornar true para que se cuente como "cargada"
+    }
+    
+    // Supabase no nos da metadata directamente, así que creamos columnas dummy
+    // basadas en que sabemos que las tablas típicamente tienen: id + otros campos
+    // Pero como no podemos obtener la estructura, dejamos el array vacío
+    // y dejamos que se muestre el mensaje de "No hay columnas disponibles"
+    
+    if (!cache.tableColumns[schema]) {
+      cache.tableColumns[schema] = {};
+    }
+    
+    cache.tableColumns[schema][tabla] = [];
+    console.log(`⚠️ Columnas de ${schema}.${tabla} no disponibles (timeout), tabla visible con advertencia`);
+    return true;
+  } catch (err) {
+    console.error(`❌ Excepción en carga básica de ${schema}.${tabla}:`, err);
+    
+    // Crear entrada vacía para que al menos aparezca la tabla
+    if (!cache.tableColumns[schema]) {
+      cache.tableColumns[schema] = {};
+    }
+    cache.tableColumns[schema][tabla] = [];
+    return true;
   }
 }
 
@@ -234,7 +423,8 @@ async function loadAllTableColumns() {
 
 /**
  * Inicializar toda la caché de metadatos de la base de datos
- * Se llama una sola vez después del login exitoso
+ * OPTIMIZADO: Intenta cargar desde sessionStorage primero
+ * Si no hay caché guardada, la carga desde Supabase
  */
 export async function initializeDatabaseCache(force = false) {
   // Si ya está inicializada y no es forzada, retornar
@@ -254,6 +444,31 @@ export async function initializeDatabaseCache(force = false) {
         }
       }, 100);
     });
+  }
+  
+  // ============================================================================
+  // INTENTAR CARGAR DESDE SESSIONSTORAGE PRIMERO
+  // ============================================================================
+  
+  if (!force) {
+    console.log('🔍 Buscando caché en sessionStorage...');
+    const cacheRestaurada = cargarCacheDesdeStorage();
+    
+    if (cacheRestaurada) {
+      // ¡Éxito! La caché se restauró desde sessionStorage
+      updateLoadingScreen(
+        '¡Listo!',
+        'Caché restaurada desde sesión anterior',
+        100,
+        `Enums: ${Object.keys(cache.enums).length} | Tablas: ${cache.tables.mdr.length + cache.tables.hrf.length}`
+      );
+      
+      setTimeout(() => {
+        hideLoadingScreen();
+      }, 500);
+      
+      return true;
+    }
   }
   
   cache.loading = true;
@@ -313,6 +528,11 @@ export async function initializeDatabaseCache(force = false) {
       columnas_mdr: Object.keys(cache.tableColumns.mdr).length,
       columnas_hrf: Object.keys(cache.tableColumns.hrf).length
     });
+    
+    // ============================================================================
+    // GUARDAR EN SESSIONSTORAGE PARA FUTURAS RECARGAS
+    // ============================================================================
+    guardarCacheEnStorage();
     
     // Ocultar pantalla de carga después de un breve delay
     setTimeout(() => {
@@ -456,6 +676,7 @@ export function getCacheStatus() {
 
 /**
  * Limpiar la caché (útil para logout)
+ * También elimina la caché de sessionStorage
  */
 export function clearCache() {
   cache.initialized = false;
@@ -464,7 +685,11 @@ export function clearCache() {
   cache.tableColumns = { mdr: {}, hrf: {} };
   cache.tables = { mdr: [], hrf: [] };
   cache.lastUpdate = null;
-  console.log('🗑️ Caché limpiada');
+  
+  // Limpiar también de sessionStorage
+  limpiarCacheStorage();
+  
+  console.log('🗑️ Caché limpiada (memoria y sessionStorage)');
 }
 
 // ============================================================================
