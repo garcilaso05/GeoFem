@@ -9,25 +9,28 @@
 -- ============================================================
 
 CREATE OR REPLACE FUNCTION public.get_enum_values()
-RETURNS TABLE(enum_name text, enum_value text)
+RETURNS TABLE(enum_name text, enum_value text, enum_order integer)
 LANGUAGE sql
 SECURITY DEFINER
 STABLE
 AS $$
+  -- Buscar ENUMs en el schema public (donde siempre están en PostgreSQL)
   SELECT 
     t.typname::text as enum_name,
-    e.enumlabel::text as enum_value
-  FROM pg_type t
-  JOIN pg_enum e ON t.oid = e.enumtypid
-  JOIN pg_namespace n ON n.oid = t.typnamespace
-  WHERE n.nspname IN ('mdr', 'hrf')
-  ORDER BY n.nspname, t.typname, e.enumsortorder;
+    e.enumlabel::text as enum_value,
+    e.enumsortorder::integer as enum_order
+  FROM pg_catalog.pg_type t
+  JOIN pg_catalog.pg_enum e ON t.oid = e.enumtypid
+  JOIN pg_catalog.pg_namespace n ON n.oid = t.typnamespace
+  WHERE n.nspname = 'public'  -- ENUMs están siempre en public
+    AND t.typtype = 'e'  -- Solo tipos ENUM
+  ORDER BY t.typname, e.enumsortorder;
 $$;
 
 GRANT EXECUTE ON FUNCTION public.get_enum_values() TO anon, authenticated;
 
 COMMENT ON FUNCTION public.get_enum_values() IS 
-'Obtiene todos los enums de los schemas mdr y hrf con sus valores';
+'Obtiene todos los enums del schema public con sus valores ordenados. Los ENUMs en PostgreSQL se almacenan en el schema public independientemente de dónde se usen.';
 
 -- ============================================================
 -- TABLAS - Obtener lista de tablas de un schema
@@ -76,7 +79,23 @@ BEGIN
       c.data_type::text,
       c.character_maximum_length::int,
       c.udt_name::text,
+      -- Detectar FK automáticamente desde constraints, o usar comentario si existe
       COALESCE(
+        -- Intentar obtener FK desde information_schema
+        (SELECT 'FK -> ' || ccu.table_name || '.' || ccu.column_name
+         FROM information_schema.table_constraints tc
+         JOIN information_schema.key_column_usage kcu 
+           ON tc.constraint_name = kcu.constraint_name
+           AND tc.table_schema = kcu.table_schema
+         JOIN information_schema.constraint_column_usage ccu
+           ON tc.constraint_name = ccu.constraint_name
+           AND tc.table_schema = ccu.table_schema
+         WHERE tc.constraint_type = 'FOREIGN KEY'
+           AND tc.table_schema = p_schema
+           AND tc.table_name = p_tabla
+           AND kcu.column_name = c.column_name
+         LIMIT 1),
+        -- Si no hay FK, intentar obtener comentario manual
         pgd.description,
         NULL
       )::text as fk_comment,

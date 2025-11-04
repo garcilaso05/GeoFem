@@ -245,6 +245,8 @@ async function loadEnums() {
     });
     
     console.log(`✅ Enumerados cargados: ${Object.keys(cache.enums).length} tipos`);
+    console.log('📋 Lista de ENUMs disponibles:', Object.keys(cache.enums));
+    console.log('📄 Detalle completo:', cache.enums);
     return true;
   } catch (err) {
     console.error('❌ Excepción cargando enumerados:', err);
@@ -598,7 +600,13 @@ export function getEnumValues(enumName) {
     return [];
   }
   
-  return cache.enums[enumName] || [];
+  const values = cache.enums[enumName] || [];
+  
+  if (values.length === 0) {
+    console.warn(`⚠️ No se encontraron valores para el ENUM "${enumName}". ENUMs disponibles:`, Object.keys(cache.enums));
+  }
+  
+  return values;
 }
 
 /**
@@ -612,6 +620,126 @@ export function getAllEnums() {
   }
   
   return cache.enums;
+}
+
+/**
+ * Verificar si una columna es un ENUM
+ * @param {Object} column - Objeto columna con propiedades data_type y udt_name
+ * @returns {boolean} - true si es un ENUM
+ */
+export function isEnumColumn(column) {
+  if (!column) return false;
+  
+  // Los ENUMs tienen data_type = 'USER-DEFINED' y udt_name contiene el nombre del tipo
+  const isEnum = column.data_type === 'USER-DEFINED' && 
+                 column.udt_name && 
+                 !column.udt_name.startsWith('_');
+  
+  return isEnum;
+}
+
+/**
+ * Crear un elemento <select> para un campo ENUM
+ * @param {Object} column - Objeto columna con información del campo
+ * @param {string|null} selectedValue - Valor seleccionado actualmente (opcional)
+ * @param {Object} options - Opciones adicionales: { includeEmpty: true, emptyText: '-- Seleccionar --', className: '', id: '', required: false }
+ * @returns {HTMLSelectElement|null} - Elemento select o null si no es un ENUM
+ */
+export function createEnumSelect(column, selectedValue = null, options = {}) {
+  // Verificar si es un ENUM
+  if (!isEnumColumn(column)) {
+    console.warn(`⚠️ createEnumSelect: La columna "${column.column_name}" no es un ENUM`);
+    return null;
+  }
+  
+  // Obtener valores del ENUM
+  const enumValues = getEnumValues(column.udt_name);
+  
+  if (enumValues.length === 0) {
+    console.error(`❌ createEnumSelect: No se encontraron valores para el ENUM "${column.udt_name}"`);
+    return null;
+  }
+  
+  // Opciones por defecto
+  const config = {
+    includeEmpty: options.includeEmpty !== false, // Por defecto true
+    emptyText: options.emptyText || '-- Seleccionar --',
+    className: options.className || '',
+    id: options.id || '',
+    required: options.required || false
+  };
+  
+  // Crear elemento select
+  const select = document.createElement('select');
+  
+  if (config.className) {
+    select.className = config.className;
+  }
+  
+  if (config.id) {
+    select.id = config.id;
+  }
+  
+  if (config.required) {
+    select.required = true;
+  }
+  
+  // Agregar opción vacía si se requiere
+  if (config.includeEmpty) {
+    const emptyOption = document.createElement('option');
+    emptyOption.value = '';
+    emptyOption.textContent = config.emptyText;
+    select.appendChild(emptyOption);
+  }
+  
+  // Agregar opciones del ENUM
+  enumValues.forEach(value => {
+    const option = document.createElement('option');
+    option.value = value;
+    option.textContent = value;
+    
+    // Marcar como seleccionado si coincide
+    if (selectedValue !== null && selectedValue === value) {
+      option.selected = true;
+    }
+    
+    select.appendChild(option);
+  });
+  
+  console.log(`✅ createEnumSelect: Select creado para "${column.column_name}" (${column.udt_name}) con ${enumValues.length} valores`);
+  
+  return select;
+}
+
+/**
+ * Crear HTML de opciones para un ENUM (para usar en innerHTML)
+ * @param {string} enumName - Nombre del ENUM
+ * @param {string|null} selectedValue - Valor seleccionado (opcional)
+ * @param {boolean} includeEmpty - Si incluir opción vacía (default: true)
+ * @returns {string} - HTML de las opciones
+ */
+export function createEnumOptionsHTML(enumName, selectedValue = null, includeEmpty = true) {
+  const enumValues = getEnumValues(enumName);
+  
+  if (enumValues.length === 0) {
+    console.error(`❌ createEnumOptionsHTML: No se encontraron valores para el ENUM "${enumName}"`);
+    return '<option value="">Error: ENUM no encontrado</option>';
+  }
+  
+  let html = '';
+  
+  // Opción vacía
+  if (includeEmpty) {
+    html += '<option value="">-- Seleccionar --</option>';
+  }
+  
+  // Opciones del ENUM
+  enumValues.forEach(value => {
+    const selected = (selectedValue !== null && selectedValue === value) ? ' selected' : '';
+    html += `<option value="${value}"${selected}>${value}</option>`;
+  });
+  
+  return html;
 }
 
 /**
@@ -745,6 +873,9 @@ window.dbCache = {
   waitForCache,
   getEnumValues,
   getAllEnums,
+  isEnumColumn,
+  createEnumSelect,
+  createEnumOptionsHTML,
   getTableColumns,
   getTables,
   isCacheReady,
@@ -759,4 +890,4 @@ window.dbCache = {
   updateLoadingScreen
 };
 
-console.log('✅ Módulo database-cache.js cargado');
+console.log('✅ Módulo database-cache.js cargado con helpers de ENUM');

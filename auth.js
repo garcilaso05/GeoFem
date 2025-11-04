@@ -163,6 +163,9 @@ async function authenticateSupabase() {
   const password = document.getElementById('supabase-password').value;
   
   try {
+    // Limpiar caché al iniciar sesión
+    console.log('🧹 Limpiando caché antes de iniciar sesión...');
+    sessionStorage.clear();
     const { createClient } = await import("https://esm.sh/@supabase/supabase-js");
     
     // 1. Crear cliente con ANON KEY (no con el token de acceso)
@@ -423,8 +426,18 @@ loginForm.addEventListener('submit', async (e) => {
 logoutBtn.addEventListener('click', async () => {
   try {
     authStateProcessed = false;
+    
+    // Limpiar sessionStorage antes de cerrar sesión
+    console.log('🧹 Limpiando caché de sessionStorage...');
+    sessionStorage.clear();
+    
     await signOut(auth);
     showMessage('Sesión cerrada correctamente', 'success');
+    
+    // Recargar página para limpiar estado
+    setTimeout(() => {
+      location.reload();
+    }, 500);
   } catch (error) {
     console.error('Error al cerrar sesión:', error);
     showMessage('Error al cerrar sesión');
@@ -440,6 +453,10 @@ document.getElementById('app-logout-btn').addEventListener('click', async () => 
     if (window.dbCache) {
       window.dbCache.clearCache();
     }
+    
+    // Limpiar sessionStorage
+    console.log('🧹 Limpiando caché de sessionStorage...');
+    sessionStorage.clear();
     
     // Si hay una sesión de Supabase activa, cerrarla
     if (window._supabaseInstance && window._supabaseAuthCreds?.authenticated) {
@@ -457,6 +474,11 @@ document.getElementById('app-logout-btn').addEventListener('click', async () => 
     await signOut(auth);
     
     console.log('Sesión cerrada correctamente');
+    
+    // Recargar página para limpiar estado completamente
+    setTimeout(() => {
+      location.reload();
+    }, 500);
   } catch (error) {
     console.error('Error al cerrar sesión:', error);
     alert('Error al cerrar sesión: ' + error.message);
@@ -519,6 +541,10 @@ onAuthStateChanged(auth, async (user) => {
   } else {
     console.log('Usuario no autenticado, mostrando login');
     authStateProcessed = false;
+    
+    // Limpiar caché cuando no hay usuario autenticado
+    console.log('🧹 Limpiando caché (sin usuario autenticado)...');
+    sessionStorage.clear();
     
     authView.classList.remove('hidden');
     userView.classList.add('hidden');

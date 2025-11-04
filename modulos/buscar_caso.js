@@ -126,31 +126,28 @@ async function generarContenedoresFiltros() {
       
       let input;
       
-      // Detectar enums por data_type === 'USER-DEFINED'
-      const isEnum = col.data_type === 'USER-DEFINED' && col.udt_name && !col.udt_name.startsWith('_');
-      
-      if (isEnum) {
-        // Es un ENUM - obtener valores del cache global
-        const valoresEnum = obtenerValoresEnum(col.udt_name);
-        
-        console.log(`✅ ENUM DETECTADO: ${col.column_name} -> ${col.udt_name}`, valoresEnum);
-        
-        input = document.createElement('select');
-        input.className = 'filter-input';
-        input.dataset.column = col.column_name;
-        input.dataset.type = 'enum';
-        
-        const optEmpty = document.createElement('option');
-        optEmpty.value = '';
-        optEmpty.textContent = '-- Sin filtro --';
-        input.appendChild(optEmpty);
-        
-        valoresEnum.forEach(val => {
-          const opt = document.createElement('option');
-          opt.value = val;
-          opt.textContent = val;
-          input.appendChild(opt);
+      // Detectar ENUMs usando la función helper
+      if (window.dbCache.isEnumColumn(col)) {
+        // Es un ENUM - usar función helper para crear el select
+        input = window.dbCache.createEnumSelect(col, null, {
+          includeEmpty: true,
+          emptyText: '-- Sin filtro --',
+          className: 'filter-input'
         });
+        
+        if (input) {
+          input.dataset.column = col.column_name;
+          input.dataset.type = 'enum';
+        } else {
+          // Si falla, crear input text por defecto
+          console.error(`❌ Error creando select para ENUM ${col.udt_name}`);
+          input = document.createElement('input');
+          input.type = 'text';
+          input.className = 'filter-input';
+          input.dataset.column = col.column_name;
+          input.dataset.type = 'text';
+          input.placeholder = 'Error cargando ENUM';
+        }
         
       } else if (col.data_type === 'boolean') {
         // Boolean - crear select

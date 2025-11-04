@@ -158,5 +158,20 @@
   <div id="foreignKeyTooltip"></div>
 
   <script type="module" src="auth.js"></script>
+  
+  <!-- Limpiar caché al cerrar ventana/pestaña -->
+  <script>
+    // Limpiar sessionStorage al cerrar la ventana/pestaña
+    window.addEventListener('beforeunload', () => {
+      console.log('🧹 Limpiando caché al cerrar ventana...');
+      sessionStorage.clear();
+    });
+    
+    // También limpiar al cambiar de página (por si acaso)
+    window.addEventListener('pagehide', () => {
+      console.log('🧹 Limpiando caché al ocultar página...');
+      sessionStorage.clear();
+    });
+  </script>
 </body>
 </html>

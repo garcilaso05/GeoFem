@@ -115,26 +115,30 @@ async function generarContenedoresFiltros() {
       label.textContent = formatDisplayName(col.column_name);
       
       let input;
-      const isEnum = col.data_type === 'USER-DEFINED' && col.udt_name && !col.udt_name.startsWith('_');
       
-      if (isEnum) {
-        const valoresEnum = obtenerValoresEnum(col.udt_name);
-        input = document.createElement('select');
-        input.className = 'filter-input';
-        input.dataset.column = col.column_name;
-        input.dataset.type = 'enum';
-        
-        const optEmpty = document.createElement('option');
-        optEmpty.value = '';
-        optEmpty.textContent = '-- Sin filtro --';
-        input.appendChild(optEmpty);
-        
-        valoresEnum.forEach(val => {
-          const opt = document.createElement('option');
-          opt.value = val;
-          opt.textContent = val;
-          input.appendChild(opt);
+      // Detectar ENUMs usando la función helper
+      if (window.dbCache.isEnumColumn(col)) {
+        // Es un ENUM - usar función helper para crear el select
+        input = window.dbCache.createEnumSelect(col, null, {
+          includeEmpty: true,
+          emptyText: '-- Sin filtro --',
+          className: 'filter-input'
         });
+        
+        if (input) {
+          input.dataset.column = col.column_name;
+          input.dataset.type = 'enum';
+        } else {
+          // Si falla, crear input text por defecto
+          console.error(`❌ Error creando select para ENUM ${col.udt_name} en filtros`);
+          input = document.createElement('input');
+          input.type = 'text';
+          input.className = 'filter-input';
+          input.dataset.column = col.column_name;
+          input.dataset.type = 'text';
+          input.placeholder = 'Error cargando ENUM';
+        }
+        
       } else if (col.data_type === 'boolean') {
         input = document.createElement('select');
         input.className = 'filter-input';
@@ -450,22 +454,21 @@ async function generarCamposEditables(tabla, casoId, datos) {
     const campo = col.column_name;
     const valor = datos[campo];
     const valorMostrar = valor !== null && valor !== undefined ? valor : '';
-    const isEnum = col.data_type === 'USER-DEFINED' && col.udt_name && !col.udt_name.startsWith('_');
     const key = `${tabla}_${casoId}_${campo}`;
     
     html += `<div class="field-item-edit" id="field-${key}">`;
     html += `<span class="field-label-edit">${campo}</span>`;
     
     // Crear input según el tipo
-    if (isEnum) {
-      const valoresEnum = obtenerValoresEnum(col.udt_name);
+    if (window.dbCache.isEnumColumn(col)) {
+      // Es un ENUM - usar función helper para crear opciones HTML
+      const optionsHTML = window.dbCache.createEnumOptionsHTML(col.udt_name, valorMostrar, true);
+      
       html += `<select class="field-input-edit" data-key="${key}" data-original="${valorMostrar}" onchange="registrarCambio('${tabla}', ${casoId}, '${campo}', this)">`;
       html += `<option value="">(vacío)</option>`;
-      valoresEnum.forEach(val => {
-        const selected = val === valorMostrar ? 'selected' : '';
-        html += `<option value="${val}" ${selected}>${val}</option>`;
-      });
+      html += optionsHTML;
       html += `</select>`;
+      
     } else if (col.data_type === 'boolean') {
       html += `<select class="field-input-edit" data-key="${key}" data-original="${valorMostrar}" onchange="registrarCambio('${tabla}', ${casoId}, '${campo}', this)">`;
       html += `<option value="">NULL</option>`;

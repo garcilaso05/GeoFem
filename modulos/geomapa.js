@@ -278,10 +278,11 @@ async function cargarDatosEnMapa() {
       document.querySelector('.geomapa-vacio')?.remove();
     }
     
-    // Obtener datos de la tabla usando la función RPC
-    const { data, error } = await supabase.rpc(`${schema}_select_all`, { 
-      tabla: tableName 
-    });
+    // Obtener datos de la tabla con consulta directa
+    const { data, error } = await supabase
+      .schema(schema)
+      .from(tableName)
+      .select('*');
     
     if (error) {
       throw error;

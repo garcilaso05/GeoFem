@@ -100,26 +100,25 @@ async function cargarCamposTabla(tabla) {
           // Si hay error, solo deja NULL
         }
       }
-    } else if (col.udt_name) {
-      // OPTIMIZACIÓN: Usar caché para enums
-      const enumValues = window.dbCache.getEnumValues(col.udt_name);
-      if (enumValues && enumValues.length > 0) {
-        input = document.createElement('select');
-        input.className = 'fieldValue';
+    } else if (window.dbCache.isEnumColumn(col)) {
+      // Es un ENUM - usar función helper para crear el select
+      input = window.dbCache.createEnumSelect(col, null, {
+        includeEmpty: false,
+        className: 'fieldValue'
+      });
+      
+      if (input) {
         input.name = col.column_name;
-        enumValues.forEach(val => {
-          const opt = document.createElement('option');
-          opt.value = val;
-          opt.textContent = val;
-          input.appendChild(opt);
-        });
       } else {
-        // Si no hay valores de enum, campo de texto normal
+        // Si falla, crear input text por defecto
+        console.error(`❌ Error creando select para ENUM ${col.udt_name} en inserciones`);
         input = document.createElement('input');
         input.type = 'text';
         input.className = 'fieldValue';
         input.name = col.column_name;
+        input.placeholder = `Error cargando ENUM ${col.udt_name}`;
       }
+      
     } else if (col.data_type === 'boolean') {
       input = document.createElement('input');
       input.type = 'checkbox';
