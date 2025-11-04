@@ -267,7 +267,7 @@ async function loadTables(schema) {
       schema === 'mdr' ? 25 : 40
     );
     console.log(`📦 Cargando tablas del schema ${schema}...`);
-    const { data, error } = await supabase.rpc(`${schema}_get_public_tables`);
+    const { data, error } = await supabase.rpc('get_public_tables', { p_schema: schema });
     
     if (error) {
       console.error(`❌ Error cargando tablas de ${schema}:`, error);
@@ -292,7 +292,7 @@ async function loadTableColumns(schema, tabla) {
   if (!supabase) return false;
   
   try {
-    const { data, error } = await supabase.rpc(`${schema}_get_table_columns`, { tabla });
+    const { data, error } = await supabase.rpc('get_table_columns', { p_schema: schema, p_tabla: tabla });
     
     if (error) {
       console.error(`❌ Error cargando columnas de ${schema}.${tabla}:`, error);
@@ -334,7 +334,8 @@ async function loadTableColumnsBasic(schema, tabla) {
     // Estrategia: Hacer un SELECT * LIMIT 0 para obtener la estructura
     // Esto es rápido porque no retorna datos, solo metadata
     const { data, error } = await supabase
-      .from(`${schema}.${tabla}`)
+      .schema(schema)
+      .from(tabla)
       .select('*')
       .limit(0);
     

@@ -262,11 +262,11 @@ async function obtenerDatosGrafico(tabla, campo) {
     sanitizeIdentifier(campo);
     
     const schema = window.getCurrentSchema();
-    // Usar función wrapper para obtener solo una columna
-    const { data, error } = await supabase.rpc(`${schema}_select_column`, {
-      tabla: tabla,
-      columna: campo
-    });
+    // Consulta directa al schema para obtener solo una columna
+    const { data, error } = await supabase
+      .schema(schema)
+      .from(tabla)
+      .select(campo);
       
     if (error) {
       console.error("Error obteniendo datos:", error);

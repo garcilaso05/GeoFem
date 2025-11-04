@@ -48,7 +48,10 @@ document.getElementById("formCrearEnum").onsubmit = async function(e) {
     const sql = `CREATE TYPE ${name} AS ENUM (${elements.map(escapeSqlValue).join(', ')});`;
     const schema = window.getCurrentSchema();
     
-    const { error } = await supabase.rpc(`${schema}_exec_create_enum`, { query: sql });
+    const { error } = await supabase.rpc('exec_create_enum', {
+      p_schema: schema,
+      p_query: sql
+    });
 
     if (error) {
       status.textContent = "Error creando enumerado: " + error.message;

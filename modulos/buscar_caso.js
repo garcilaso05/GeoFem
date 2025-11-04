@@ -228,15 +228,25 @@ async function obtenerDatosTabla(tabla) {
   const supabase = getSupabaseInstance();
   if (!supabase) return [];
   
-  const schema = window.getCurrentSchema();
-  const { data, error } = await supabase.rpc(`${schema}_select_all`, { tabla });
-  
-  if (error) {
-    console.error(`Error obteniendo datos de ${tabla}:`, error);
+  try {
+    sanitizeIdentifier(tabla);
+    
+    const schema = window.getCurrentSchema();
+    const { data, error } = await supabase
+      .schema(schema)
+      .from(tabla)
+      .select('*');
+    
+    if (error) {
+      console.error(`Error obteniendo datos de ${tabla}:`, error);
+      return [];
+    }
+    
+    return data || [];
+  } catch (err) {
+    console.error(`Excepción obteniendo datos de ${tabla}:`, err);
     return [];
   }
-  
-  return data || [];
 }
 
 // Aplicar filtros y buscar casos
@@ -459,14 +469,15 @@ async function obtenerDatosTablaPorId(tabla, id) {
   const schema = window.getCurrentSchema();
   
   try {
-    console.log(`🔎 Llamando a ${schema}_select_one_by_value(tabla: "${tabla}", columna: "id", valor: "${id}")`);
+    sanitizeIdentifier(tabla);
+    console.log(`🔎 Obteniendo registro de ${schema}.${tabla} con id=${id}`);
     
-    // Usar select_one_by_value con columna 'id'
-    const { data, error } = await supabase.rpc(`${schema}_select_one_by_value`, { 
-      tabla,
-      columna: 'id',
-      valor: id.toString()
-    });
+    const { data, error } = await supabase
+      .schema(schema)
+      .from(tabla)
+      .select('*')
+      .eq('id', id)
+      .single();
     
     if (error) {
       console.error(`❌ Error en ${tabla}:`, error);

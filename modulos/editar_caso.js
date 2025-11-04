@@ -204,15 +204,25 @@ async function obtenerDatosTabla(tabla) {
   const supabase = getSupabaseInstance();
   if (!supabase) return [];
   
-  const schema = window.getCurrentSchema();
-  const { data, error } = await supabase.rpc(`${schema}_select_all`, { tabla });
-  
-  if (error) {
-    console.error(`Error obteniendo datos de ${tabla}:`, error);
+  try {
+    sanitizeIdentifier(tabla);
+    
+    const schema = window.getCurrentSchema();
+    const { data, error } = await supabase
+      .schema(schema)
+      .from(tabla)
+      .select('*');
+    
+    if (error) {
+      console.error(`Error obteniendo datos de ${tabla}:`, error);
+      return [];
+    }
+    
+    return data || [];
+  } catch (err) {
+    console.error(`Excepción obteniendo datos de ${tabla}:`, err);
     return [];
   }
-  
-  return data || [];
 }
 
 async function buscarCasos() {
@@ -407,16 +417,19 @@ async function obtenerDatosTablaPorId(tabla, id) {
   const supabase = getSupabaseInstance();
   if (!supabase) return null;
   
-  const schema = window.getCurrentSchema();
-  
   try {
-    const { data, error } = await supabase.rpc(`${schema}_select_one_by_value`, { 
-      tabla,
-      columna: 'id',
-      valor: id.toString()
-    });
+    sanitizeIdentifier(tabla);
     
-    if (error || !data || Object.keys(data).length === 0) {
+    const schema = window.getCurrentSchema();
+    const { data, error } = await supabase
+      .schema(schema)
+      .from(tabla)
+      .select('*')
+      .eq('id', id)
+      .single();
+    
+    if (error) {
+      console.error(`Error obteniendo dato de ${tabla}:`, error);
       return null;
     }
     
@@ -538,14 +551,16 @@ async function guardarTodosCambios() {
   
   for (const [key, cambio] of Object.entries(cambiosPendientes)) {
     try {
+      sanitizeIdentifier(cambio.tabla);
+      sanitizeIdentifier(cambio.campo);
+      
       console.log(`💾 Guardando cambio en ${cambio.tabla}.${cambio.campo} para ID ${cambio.id}`);
       
-      const { error } = await supabase.rpc(`${schema}_update_row`, {
-        tabla: cambio.tabla,
-        id_val: cambio.id,
-        campo: cambio.campo,
-        valor: cambio.valorNuevo
-      });
+      const { error } = await supabase
+        .schema(schema)
+        .from(cambio.tabla)
+        .update({ [cambio.campo]: cambio.valorNuevo })
+        .eq('id', cambio.id);
       
       if (error) {
         console.error(`❌ Error actualizando ${key}:`, error);

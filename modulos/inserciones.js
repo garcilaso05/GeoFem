@@ -80,11 +80,13 @@ async function cargarCamposTabla(tabla) {
       if (refInfo.length === 2) {
         const [refTable, refCol] = refInfo;
         try {
-          // Usar función wrapper para obtener columna de referencia
-          const { data: refData, error: refError } = await supabase.rpc(`${schema}_select_column`, {
-            tabla: refTable,
-            columna: refCol
-          });
+          sanitizeIdentifier(refTable);
+          sanitizeIdentifier(refCol);
+          
+          const { data: refData, error: refError } = await supabase
+            .schema(schema)
+            .from(refTable)
+            .select(refCol);
           
           if (!refError && Array.isArray(refData)) {
             refData.forEach(row => {
@@ -199,12 +201,14 @@ async function insertRow() {
     const sql = `INSERT INTO ${sanitizedTableName} (${columns.join(", ")}) VALUES (${values.join(", ")});`;
     document.getElementById("insertPreview").textContent = sql;
 
-    // Ejecutar inserción usando función wrapper
+    // Ejecutar inserción directa
+    sanitizeIdentifier(tableName);
     const schema = window.getCurrentSchema();
-    const { error } = await supabase.rpc(`${schema}_insert_row`, {
-      tabla: tableName,
-      datos: row
-    });
+    
+    const { error } = await supabase
+      .schema(schema)
+      .from(tableName)
+      .insert(row);
     
     if (error) {
       alert("Error insertando fila: " + error.message);

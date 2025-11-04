@@ -63,8 +63,10 @@ async function cargarDatos(tabla) {
     sanitizeIdentifier(tabla);
     
     const schema = window.getCurrentSchema();
-    // Usar función wrapper en lugar de .schema().from()
-    const { data, error } = await supabase.rpc(`${schema}_select_all`, { tabla });
+    const { data, error } = await supabase
+      .schema(schema)
+      .from(tabla)
+      .select('*');
       
     if (error) {
       console.error("Error cargando datos:", error);
@@ -72,7 +74,6 @@ async function cargarDatos(tabla) {
       return;
     }
     
-    // La función devuelve un jsonb, que ya es un array
     return data || [];
   } catch (err) {
     console.error("Error:", err);
@@ -96,20 +97,19 @@ async function obtenerDatosReferencia(fkComment, valorClave) {
     sanitizeIdentifier(columnaRef);
     
     const schema = window.getCurrentSchema();
-    // Usar función mejorada que acepta valor como string
-    const { data, error } = await supabase.rpc(`${schema}_select_one_by_value`, {
-      tabla: tablaRef,
-      columna: columnaRef,
-      valor: String(valorClave) // Convertir a string para evitar problemas de tipo
-    });
+    const { data, error } = await supabase
+      .schema(schema)
+      .from(tablaRef)
+      .select('*')
+      .eq(columnaRef, valorClave)
+      .single();
       
     if (error) {
       console.error("Error obteniendo referencia:", error);
       return null;
     }
     
-    // La función devuelve un objeto JSON directamente, no un array
-    return data && Object.keys(data).length > 0 ? data : null;
+    return data;
   } catch (err) {
     console.error("Error obteniendo referencia:", err);
     return null;

@@ -145,10 +145,11 @@ async function renombrarCampo(tabla, oldName, newName) {
   if (!supabase) return;
   try {
     const schema = window.getCurrentSchema();
-    const { error } = await supabase.rpc(`${schema}_rename_column_safe`, {
-      tabla,
-      old_name: oldName,
-      new_name: newName
+    const { error } = await supabase.rpc('rename_column_safe', {
+      p_schema: schema,
+      p_tabla: tabla,
+      p_old_name: oldName,
+      p_new_name: newName
     });
     if (error) throw error;
     mostrarMsg('Campo renombrado con éxito', 'green');
@@ -237,9 +238,10 @@ async function anadirCampo(tabla) {
     if (!supabase) return;
     try {
       const schema = window.getCurrentSchema();
-      const { error } = await supabase.rpc(`${schema}_add_column_safe`, {
-        tabla,
-        column_sql: columnSql
+      const { error } = await supabase.rpc('add_column_safe', {
+        p_schema: schema,
+        p_tabla: tabla,
+        p_column_sql: columnSql
       });
       if (error) throw error;
       mostrarMsg('Campo añadido con éxito', 'green');
