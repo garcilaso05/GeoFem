@@ -54,11 +54,11 @@ export function escapeSqlValue(value) {
 
 /**
  * Formatea un nombre de base de datos para mostrarlo de forma legible.
- * Convierte: madre_contexto_edad (integer) → Madre Contexto Edad
+ * Convierte nombres técnicos a nombres humanos presentables.
  * 
  * Reglas:
- * - Reemplaza _ por espacios
- * - Capitaliza cada palabra
+ * - Mapeos específicos para tablas conocidas
+ * - Fallback: Reemplaza _ por espacios y capitaliza
  * - Elimina tipos entre paréntesis (integer), (varchar), etc.
  * - Regla especial: "ano" → "Año" (por seriedad)
  * 
@@ -71,12 +71,37 @@ export function formatDisplayName(name) {
   }
   
   // 1. Eliminar tipos entre paréntesis: (integer), (varchar), etc.
-  let formatted = name.replace(/\s*\([^)]*\)\s*/g, '');
+  let cleanName = name.replace(/\s*\([^)]*\)\s*/g, '').trim();
   
-  // 2. Reemplazar guiones bajos por espacios
-  formatted = formatted.replace(/_/g, ' ');
+  // 2. Mapeos específicos para nombres de tablas conocidas
+  const tableNameMappings = {
+    // Tablas de la madre
+    'madre_contexto_asesinato': 'Contexto del feminicidio',
+    'madre_acogida': 'Situación de la madre después del feminicidio',
+    'madre_salud_psico': 'Impacto del feminicidio en la salud psico-emocional de la madre',
+    'madre_sociodemo': 'Caracterización Sociodemográfica de la madre',
+    'madre_acceso_servicios_ayudas': 'Acceso a los servicios de atención y ayuda',
+    
+    // Tablas del agresor
+    'agresor_sociodemo': 'Información sobre el agresor',
+    
+    // Tablas del huerfano
+    'huerfano_contexto_asesinato': 'Contexto del feminicidio',
+    'huerfano_salud_psico': 'Impacto del feminicidio en la salud psico-emocional del huerfano',
+    'huerfano_sociodemografico': 'Caracterización sociodemográfica del huerfano',
+    'huerfano_servicio_ayuda': 'Acceso a los servicios de atención y ayuda después del suceso',
+    'huerfano_acogida': 'Situación del huerfano después del feminicidio'
+  };
   
-  // 3. Capitalizar cada palabra
+  // Si existe un mapeo específico, usarlo
+  if (tableNameMappings[cleanName]) {
+    return tableNameMappings[cleanName];
+  }
+  
+  // 3. Fallback: formato genérico - Reemplazar guiones bajos por espacios
+  let formatted = cleanName.replace(/_/g, ' ');
+  
+  // 4. Capitalizar cada palabra
   formatted = formatted
     .toLowerCase()
     .split(' ')
@@ -89,7 +114,7 @@ export function formatDisplayName(name) {
     })
     .join(' ');
   
-  // 4. Limpiar espacios múltiples y trim
+  // 5. Limpiar espacios múltiples y trim
   formatted = formatted.replace(/\s+/g, ' ').trim();
   
   return formatted;

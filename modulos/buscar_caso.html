@@ -1,25 +1,49 @@
 <div class="module-content">
   <h2>🔍 Buscar Caso</h2>
-  <p class="text-gray">Filtra y busca casos aplicando criterios sobre las diferentes tablas relacionadas.</p>
+  <p class="text-gray">Filtra y busca casos aplicando criterios sobre las diferentes tablas relacionadas del esquema actual.</p>
+  
+  <!-- Información del esquema actual -->
+  <div class="info-container mt-20">
+    <h4>📋 Información del Esquema</h4>
+    <div class="schema-info-grid">
+      <div class="schema-info-item">
+        <span class="schema-label">Esquema activo:</span>
+        <span id="current-schema-display" class="schema-value">Cargando...</span>
+      </div>
+      <div class="schema-info-item">
+        <span class="schema-label">Tabla principal:</span>
+        <span id="root-table-display" class="schema-value">Cargando...</span>
+      </div>
+    </div>
+    <p class="schema-description">Los filtros se aplicarán a todas las tablas relacionadas disponibles en el esquema.</p>
+  </div>
   
   <!-- Barra de carga -->
   <div id="loading-filters" class="mt-20 text-center">
     <div class="loading-spinner"></div>
-    <p class="text-gray mt-10">Cargando tablas y filtros...</p>
+    <p class="text-gray mt-10">🔄 Cargando tablas y generando filtros dinámicos...</p>
   </div>
   
   <div id="filters-container" class="mt-20" style="display: none;">
     <!-- Los contenedores de filtros se generarán dinámicamente -->
   </div>
   
-  <div class="mt-20 flex-gap-10">
-    <button id="searchBtn" class="btn-verde">Buscar Casos</button>
-    <button id="clearFiltersBtn" class="secondary">Limpiar Filtros</button>
+  <div class="search-actions mt-20">
+    <button id="searchBtn" class="btn-primary">
+      <span class="btn-icon">🔍</span>
+      Buscar Casos
+    </button>
+    <button id="clearFiltersBtn" class="btn-secondary">
+      <span class="btn-icon">🧹</span>
+      Limpiar Filtros
+    </button>
   </div>
   
   <div id="results-container" class="mt-30" style="display: none;">
-    <h3>Resultados de la Búsqueda</h3>
-    <p id="results-count" class="text-gray mb-15"></p>
+    <div class="results-header">
+      <h3>📊 Resultados de la Búsqueda</h3>
+      <p id="results-count" class="results-summary mb-15"></p>
+    </div>
     <div id="results-table"></div>
   </div>
 </div>

@@ -48,6 +48,9 @@ async function cargarTablas() {
   const schema = window.getCurrentSchema();
   rootTable = getRootTable();
   
+  // Actualizar información del esquema en la UI
+  actualizarInfoEsquema(schema, rootTable);
+  
   // OPTIMIZACIÓN: Usar caché en lugar de llamadas RPC
   const todasTablas = window.dbCache.getTables(schema);
   
@@ -64,6 +67,24 @@ async function cargarTablas() {
   // Ocultar barra de carga y mostrar filtros
   if (loadingDiv) loadingDiv.style.display = 'none';
   if (filtersContainer) filtersContainer.style.display = 'block';
+}
+
+// Actualizar información del esquema en la interfaz
+function actualizarInfoEsquema(schema, rootTable) {
+  const schemaDisplay = document.getElementById('current-schema-display');
+  const rootTableDisplay = document.getElementById('root-table-display');
+  
+  if (schemaDisplay) {
+    schemaDisplay.textContent = schema.toUpperCase();
+    schemaDisplay.style.color = '#280743';
+    schemaDisplay.style.fontWeight = '700';
+  }
+  
+  if (rootTableDisplay) {
+    rootTableDisplay.textContent = rootTable;
+    rootTableDisplay.style.color = '#667eea';
+    rootTableDisplay.style.fontWeight = '600';
+  }
 }
 
 // OPTIMIZACIÓN: Obtener columnas desde caché
@@ -94,7 +115,10 @@ async function generarContenedoresFiltros() {
     const header = document.createElement('div');
     header.className = 'filter-table-header';
     header.innerHTML = `
-      <span>${formatDisplayName(tabla)}</span>
+      <div class="table-header-content">
+        <span class="table-name">${formatDisplayName(tabla)}</span>
+        <span class="table-field-count">${columnas.length} campos</span>
+      </div>
       <span class="toggle-icon collapsed">▼</span>
     `;
     
@@ -127,26 +151,62 @@ async function generarContenedoresFiltros() {
       let input;
       
       // Detectar ENUMs usando la función helper
+
+
       if (window.dbCache.isEnumColumn(col)) {
+
+
         // Es un ENUM - usar función helper para crear el select
+
+
         input = window.dbCache.createEnumSelect(col, null, {
+
+
           includeEmpty: true,
+
+
           emptyText: '-- Sin filtro --',
+
+
           className: 'filter-input'
         });
-        
-        if (input) {
+
+                if (input) {
+
+
           input.dataset.column = col.column_name;
+
+
           input.dataset.type = 'enum';
+
+
         } else {
+
+
           // Si falla, crear input text por defecto
+
+
           console.error(`❌ Error creando select para ENUM ${col.udt_name}`);
+
+
           input = document.createElement('input');
+
+
           input.type = 'text';
+
+
           input.className = 'filter-input';
+
+
           input.dataset.column = col.column_name;
+
+
           input.dataset.type = 'text';
+
+
           input.placeholder = 'Error cargando ENUM';
+
+
         }
         
       } else if (col.data_type === 'boolean') {
@@ -355,11 +415,16 @@ async function mostrarResultados(resultados) {
   const resultsTable = document.getElementById('results-table');
   
   resultsContainer.style.display = 'block';
-  resultsCount.textContent = `Se encontraron ${resultados.length} caso(s)`;
   
+  // Mensaje de resultados con mejor formato
   if (resultados.length === 0) {
-    resultsTable.innerHTML = '<div class="no-results">No se encontraron casos que cumplan los criterios de búsqueda</div>';
+    resultsCount.innerHTML = '<span class="result-status no-results-status">❌ No se encontraron casos</span> que cumplan los criterios especificados';
+    resultsTable.innerHTML = '<div class="no-results">No se encontraron casos que cumplan los criterios de búsqueda.<br><em>Intenta ajustar los filtros y buscar nuevamente.</em></div>';
     return;
+  } else if (resultados.length === 1) {
+    resultsCount.innerHTML = '<span class="result-status success-status">🎯 Se encontró 1 caso</span> que cumple los criterios';
+  } else {
+    resultsCount.innerHTML = `<span class="result-status success-status">📊 Se encontraron ${resultados.length} casos</span> que cumplen los criterios`;
   }
   
   // Crear tarjetas para cada resultado
@@ -370,11 +435,14 @@ async function mostrarResultados(resultados) {
     html += `
       <div class="result-card">
         <div class="result-card-header" onclick="toggleCasoDetails(${casoId})">
-          <span class="result-id">📋 Caso ID: ${casoId}</span>
+          <div class="result-header-content">
+            <span class="result-icon">📋</span>
+            <span class="result-id">Caso ID: ${casoId}</span>
+          </div>
           <span class="toggle-icon" id="toggle-caso-${casoId}">▼</span>
         </div>
         <div class="result-card-body" id="caso-details-${casoId}" style="display: none;">
-          <div class="loading-text">Cargando datos...</div>
+          <div class="loading-text">🔄 Cargando datos relacionados...</div>
         </div>
       </div>
     `;
@@ -423,10 +491,14 @@ async function cargarDetallesCaso(casoId, container) {
         console.log(`✅ Datos encontrados en ${tabla}:`, datos);
         tablasEncontradas++;
         
+        const camposCount = Object.keys(datos).length - 1; // -1 por el campo ID
         html += `
           <div class="table-item">
             <div class="table-item-header" onclick="toggleTableFields('${tabla}', ${casoId})">
-              <span class="table-name">📂 ${tabla}</span>
+              <div class="table-header-content">
+                <span class="table-name">${formatDisplayName(tabla)}</span>
+                <span class="table-field-count">${camposCount} campos</span>
+              </div>
               <span class="toggle-icon" id="toggle-table-${tabla}-${casoId}">▶</span>
             </div>
             <div class="table-item-body" id="table-fields-${tabla}-${casoId}" style="display: none;">

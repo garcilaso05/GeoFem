@@ -40,7 +40,13 @@ async function cargarTablas() {
   const schema = window.getCurrentSchema();
   const data = window.dbCache.getTables(schema);
   
-  data.forEach(tableName => {
+  // Filtrar para excluir las tablas "huerfano" y "madre"
+  const tablasExcluidas = ['huerfano', 'madre'];
+  const tablasFiltradas = data.filter(tableName => 
+    !tablasExcluidas.includes(tableName.toLowerCase())
+  );
+  
+  tablasFiltradas.forEach(tableName => {
     const opt = document.createElement("option");
     opt.value = tableName;
     opt.textContent = formatDisplayName(tableName);
