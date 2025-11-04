@@ -147,7 +147,7 @@ function crearTablaHTML(datos, columnas) {
     headers.forEach(header => {
       const valor = fila[header];
       const columna = columnas.find(col => col.column_name === header);
-      const esClaveForeigna = columna && columna.fk_comment && columna.fk_comment.startsWith('FK -> ');
+      const esClaveForeigna = columna && columna.fk_comment && columna.fk_comment.startsWith('FK -> ') && header !== 'id';
       
       // Determinar clase CSS según tipo de valor
       let cellClass = '';
@@ -180,7 +180,8 @@ function crearTablaHTML(datos, columnas) {
         }
       }
       
-      html += `<td class="${cellClass}">${displayValue}</td>`;
+      const casoId = fila.id || fila.ID || Object.values(fila)[0] || 'null';
+      html += `<td class="${cellClass}" onclick="abrirModalCasoCompleto(${casoId})" style="cursor: pointer;" title="Clic para ver detalles completos del caso ID: ${casoId}">${displayValue}</td>`;
     });
     html += '</tr>';
   });
@@ -523,6 +524,7 @@ function actualizarEstadisticas() {
 // Mostrar/ocultar elementos de la interfaz
 function mostrarElementosUI(mostrar) {
   const statsCards = document.getElementById('statsCards');
+  const actionButtons = document.getElementById('actionButtons');
   const searchBar = document.getElementById('searchBar');
   const advancedFilters = document.getElementById('advancedFilters');
   const paginationControls = document.getElementById('paginationControls');
@@ -531,6 +533,7 @@ function mostrarElementosUI(mostrar) {
   const display = mostrar ? 'block' : 'none';
   
   if (statsCards) statsCards.style.display = mostrar ? 'grid' : 'none';
+  if (actionButtons) actionButtons.style.display = mostrar ? 'flex' : 'none';
   if (searchBar) searchBar.style.display = display;
   if (advancedFilters) advancedFilters.style.display = display;
   if (paginationControls) paginationControls.style.display = mostrar ? 'flex' : 'none';
@@ -579,6 +582,407 @@ function ocultarTooltip() {
     tooltip.style.display = 'none';
   }
 }
+
+// ============================================================================
+// FUNCIONES DE EXPORTACIÓN A CSV
+// ============================================================================
+
+// Convertir datos a formato CSV
+function convertirACSV(datos, incluirHeaders = true) {
+  if (!datos || datos.length === 0) {
+    return '';
+  }
+  
+  const headers = Object.keys(datos[0]);
+  let csv = '';
+  
+  // Agregar headers si se solicita
+  if (incluirHeaders) {
+    csv += headers.map(header => `"${formatDisplayName(header)}"`).join(',') + '\n';
+  }
+  
+  // Agregar filas de datos
+  datos.forEach(fila => {
+    const row = headers.map(header => {
+      let valor = fila[header];
+      
+      // Manejar valores null/undefined
+      if (valor === null || valor === undefined) {
+        valor = '';
+      }
+      
+      // Convertir a string y escapar comillas
+      valor = String(valor).replace(/"/g, '""');
+      
+      return `"${valor}"`;
+    }).join(',');
+    
+    csv += row + '\n';
+  });
+  
+  return csv;
+}
+
+// Descargar CSV
+function descargarCSV(contenidoCSV, nombreArchivo) {
+  // Crear Blob con BOM para UTF-8 (para compatibilidad con Excel)
+  const bom = '\uFEFF';
+  const blob = new Blob([bom + contenidoCSV], { type: 'text/csv;charset=utf-8;' });
+  
+  // Crear enlace de descarga
+  const link = document.createElement('a');
+  const url = URL.createObjectURL(blob);
+  link.setAttribute('href', url);
+  link.setAttribute('download', nombreArchivo);
+  link.style.visibility = 'hidden';
+  
+  // Agregar al DOM, hacer clic y remover
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  
+  // Limpiar URL
+  URL.revokeObjectURL(url);
+}
+
+// Exportar datos filtrados actuales
+function exportarDatosFiltrados() {
+  if (!filteredData || filteredData.length === 0) {
+    alert('Se está descargando un excel con todos los datos seleccionados');
+    return;
+  }
+  
+  const tabla = document.getElementById('tableSelect').value;
+  if (!tabla) {
+    alert('No se ha seleccionado ninguna tabla.');
+    return;
+  }
+  
+  const schema = window.getCurrentSchema();
+  const fechaHora = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
+  
+  // Información sobre filtros activos
+  let infoFiltros = '';
+  if (searchTerm) {
+    infoFiltros += `_busqueda-${searchTerm.slice(0, 20)}`;
+  }
+  if (activeFilters.length > 0) {
+    infoFiltros += `_${activeFilters.length}filtros`;
+  }
+  
+  const nombreArchivo = `${schema}_${tabla}_filtrados${infoFiltros}_${fechaHora}.csv`;
+  const contenidoCSV = convertirACSV(filteredData, true);
+  
+  descargarCSV(contenidoCSV, nombreArchivo);
+  
+  console.log(`✅ Exportados ${filteredData.length} registros filtrados a ${nombreArchivo}`);
+  
+  // Mostrar notificación
+  mostrarNotificacionExportacion(`Exportados ${filteredData.length} registros filtrados`, 'success');
+}
+
+// Exportar todos los datos (sin filtros)
+function exportarTodosLosDatos() {
+  if (!currentTableData || currentTableData.length === 0) {
+    alert('No hay datos para exportar. Carga una tabla primero.');
+    return;
+  }
+  
+  const tabla = document.getElementById('tableSelect').value;
+  if (!tabla) {
+    alert('No se ha seleccionado ninguna tabla.');
+    return;
+  }
+  
+  const schema = window.getCurrentSchema();
+  const fechaHora = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
+  const nombreArchivo = `${schema}_${tabla}_completo_${fechaHora}.csv`;
+  const contenidoCSV = convertirACSV(currentTableData, true);
+  
+  descargarCSV(contenidoCSV, nombreArchivo);
+  
+  console.log(`✅ Exportados ${currentTableData.length} registros completos a ${nombreArchivo}`);
+  
+  // Mostrar notificación
+  mostrarNotificacionExportacion(`Exportados ${currentTableData.length} registros completos`, 'success');
+}
+
+// Mostrar notificación de exportación
+function mostrarNotificacionExportacion(mensaje, tipo = 'success') {
+  // Crear elemento de notificación
+  const notificacion = document.createElement('div');
+  notificacion.className = `export-notification ${tipo}`;
+  notificacion.innerHTML = `
+    <div class="notification-content">
+      <span class="notification-icon">${tipo === 'success' ? '✅' : '❌'}</span>
+      <span class="notification-text">${mensaje}</span>
+    </div>
+  `;
+  
+  // Estilos inline para la notificación
+  notificacion.style.cssText = `
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    background: ${tipo === 'success' ? '#27ae60' : '#e74c3c'};
+    color: white;
+    padding: 16px 20px;
+    border-radius: 8px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+    z-index: 10001;
+    transform: translateX(100%);
+    transition: transform 0.3s ease;
+    font-family: 'Poppins', sans-serif;
+    font-weight: 600;
+  `;
+  
+  // Agregar al DOM
+  document.body.appendChild(notificacion);
+  
+  // Animar entrada
+  setTimeout(() => {
+    notificacion.style.transform = 'translateX(0)';
+  }, 100);
+  
+  // Remover después de 3 segundos
+  setTimeout(() => {
+    notificacion.style.transform = 'translateX(100%)';
+    setTimeout(() => {
+      if (document.body.contains(notificacion)) {
+        document.body.removeChild(notificacion);
+      }
+    }, 300);
+  }, 3000);
+}
+
+// ============================================================================
+// FUNCIONES DEL MODAL DE DETALLES COMPLETOS
+// ============================================================================
+
+// Crear modal dinámicamente si no existe
+function crearModalSiNoExiste() {
+  if (document.getElementById('caso-modal-visualizar')) {
+    return; // Ya existe
+  }
+  
+  const modalHTML = `
+    <div id="caso-modal-visualizar" class="modal-overlay">
+      <div class="modal-container">
+        <div class="modal-header">
+          <div class="modal-title-section">
+            <div class="modal-icon">📋</div>
+            <div class="modal-title-info">
+              <h3 id="modal-caso-title-visualizar">Detalles del Caso</h3>
+              <p id="modal-caso-subtitle-visualizar">Información completa</p>
+            </div>
+          </div>
+          <button class="modal-close-btn" onclick="cerrarModalCasoVisualizar()" aria-label="Cerrar modal">×</button>
+        </div>
+        <div class="modal-body">
+          <div id="modal-caso-content-visualizar" class="modal-loading">
+            <div class="loading-spinner"></div>
+            <p>Cargando información completa del caso...</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+  
+  document.body.insertAdjacentHTML('beforeend', modalHTML);
+  console.log('✅ Modal creado dinámicamente');
+}
+
+// Abrir modal elegante con detalles completos del caso
+async function abrirModalCasoCompleto(casoId) {
+  console.log('🔍 Intentando abrir modal para caso ID:', casoId);
+  
+  if (!casoId || casoId === 'null' || casoId === null || casoId === undefined) {
+    console.error('❌ ID de caso no válido:', casoId);
+    alert('No se puede mostrar los detalles: ID no disponible');
+    return;
+  }
+  
+  // Crear modal si no existe
+  crearModalSiNoExiste();
+  
+  const modal = document.getElementById('caso-modal-visualizar');
+  const modalTitle = document.getElementById('modal-caso-title-visualizar');
+  const modalSubtitle = document.getElementById('modal-caso-subtitle-visualizar');
+  const modalContent = document.getElementById('modal-caso-content-visualizar');
+  
+  console.log('🔍 Elementos del modal:', { modal, modalTitle, modalSubtitle, modalContent });
+  
+  if (!modal || !modalTitle || !modalSubtitle || !modalContent) {
+    console.error('❌ Elementos del modal no encontrados después de crear dinámicamente');
+    alert('Error: No se pudo crear el modal dinámicamente');
+    return;
+  }
+  
+  // Configurar título del modal
+  const schema = window.getCurrentSchema();
+  modalTitle.textContent = `Caso de Feminicidio #${casoId}`;
+  modalSubtitle.textContent = `Esquema: ${schema.toUpperCase()} • Información detallada`;
+  
+  // Mostrar modal con estado de carga
+  modalContent.className = 'modal-loading';
+  modalContent.innerHTML = `
+    <div class="loading-spinner"></div>
+    <p>Cargando información completa del caso...</p>
+  `;
+  
+  // Mostrar modal con animación
+  modal.style.display = 'flex';
+  setTimeout(() => modal.classList.add('show'), 10);
+  
+  // Cargar datos del caso
+  try {
+    await cargarDatosModalCasoCompleto(casoId, modalContent);
+  } catch (error) {
+    console.error('Error cargando datos del modal:', error);
+    modalContent.innerHTML = `
+      <div style="text-align: center; color: #dc3545; padding: 40px;">
+        <h4>❌ Error al cargar datos</h4>
+        <p>${error.message}</p>
+      </div>
+    `;
+  }
+}
+
+// Cerrar modal elegante
+function cerrarModalCasoVisualizar() {
+  const modal = document.getElementById('caso-modal-visualizar');
+  if (!modal) return;
+  
+  modal.classList.remove('show');
+  setTimeout(() => {
+    modal.style.display = 'none';
+  }, 300);
+}
+
+// Buscar datos de un caso específico en una tabla
+async function buscarDatosEnTablaVisualizar(tabla, casoId, schema) {
+  try {
+    const supabase = getSupabaseInstance();
+    if (!supabase) return null;
+    
+    console.log(`🔍 Buscando datos en tabla ${tabla} para caso ${casoId}`);
+    
+    const { data, error } = await supabase
+      .schema(schema)
+      .from(tabla)
+      .select('*')
+      .eq('id', casoId)
+      .single();
+    
+    if (error) {
+      if (error.code === 'PGRST116') {
+        // No se encontraron datos (normal)
+        console.log(`ℹ️ No hay datos en ${tabla} para caso ${casoId}`);
+        return null;
+      }
+      throw error;
+    }
+    
+    return data;
+  } catch (error) {
+    console.error(`❌ Error buscando en tabla ${tabla}:`, error);
+    return null;
+  }
+}
+
+// Cargar datos del caso para el modal
+async function cargarDatosModalCasoCompleto(casoId, container) {
+  try {
+    console.log(`🔍 Cargando datos del modal para caso ${casoId}...`);
+    
+    const schema = window.getCurrentSchema();
+    const tablasRelacionadas = window.dbCache.getTables(schema).filter(tabla => 
+      tabla !== 'huerfano' && tabla !== 'madre'
+    );
+    
+    let html = '<div class="modal-caso-details"><div class="modal-tables-grid">';
+    let datosEncontrados = false;
+    let totalCampos = 0;
+    
+    for (const tabla of tablasRelacionadas) {
+      const datos = await buscarDatosEnTablaVisualizar(tabla, casoId, schema);
+      
+      if (datos && Object.keys(datos).length > 1) { // Más que solo ID
+        datosEncontrados = true;
+        const camposCount = Object.keys(datos).length - 1; // -1 por el campo ID
+        totalCampos += camposCount;
+        
+        html += `
+          <div class="modal-table-section">
+            <div class="modal-table-header">
+              <span class="modal-table-name">${formatDisplayName(tabla)}</span>
+              <span class="modal-field-count">${camposCount} campos</span>
+            </div>
+            <div class="modal-table-fields">
+              ${generarCamposModalTablaVisualizar(datos)}
+            </div>
+          </div>
+        `;
+      }
+    }
+    
+    html += '</div></div>';
+    
+    if (!datosEncontrados) {
+      container.innerHTML = `
+        <div class="modal-caso-details" style="text-align: center; color: #666; padding: 60px 30px;">
+          <h4>📭 Sin datos disponibles</h4>
+          <p>No se encontraron datos relacionados para este caso en las tablas del esquema.</p>
+        </div>
+      `;
+    } else {
+      container.innerHTML = html;
+      container.className = 'modal-body-content';
+    }
+    
+  } catch (error) {
+    console.error('❌ Error cargando datos del modal:', error);
+    throw error;
+  }
+}
+
+// Generar HTML para los campos del modal
+function generarCamposModalTablaVisualizar(datos) {
+  let html = '<div class="modal-fields-grid">';
+  
+  for (const [campo, valor] of Object.entries(datos)) {
+    // Saltar el campo ID
+    if (campo === 'id') continue;
+    
+    const valorMostrar = valor !== null && valor !== undefined && valor !== '' ? valor : '';
+    
+    html += `
+      <div class="modal-field-item">
+        <span class="modal-field-label">${formatDisplayName(campo)}</span>
+        <span class="modal-field-value">${valorMostrar}</span>
+      </div>
+    `;
+  }
+  
+  html += '</div>';
+  return html;
+}
+
+// Hacer funciones globales para onclick
+window.abrirModalCasoCompleto = abrirModalCasoCompleto;
+window.cerrarModalCasoVisualizar = cerrarModalCasoVisualizar;
+
+// Test de funciones disponibles
+console.log('✅ Funciones del modal registradas:', {
+  abrirModalCasoCompleto: typeof window.abrirModalCasoCompleto,
+  cerrarModalCasoVisualizar: typeof window.cerrarModalCasoVisualizar
+});
+
+// Función de test para llamar desde consola
+window.testModal = function(id = 1) {
+  console.log('🧪 Probando modal con ID:', id);
+  abrirModalCasoCompleto(id);
+};
 
 // Event listeners
 function setupVisualizarDatosListeners() {
@@ -776,6 +1180,27 @@ function setupVisualizarDatosListeners() {
   }
   
   // ============================================================================
+  // EVENT LISTENERS DE EXPORTACIÓN
+  // ============================================================================
+  
+  const exportCsvBtn = document.getElementById('exportCsvBtn');
+  const exportAllCsvBtn = document.getElementById('exportAllCsvBtn');
+  
+  if (exportCsvBtn) {
+    exportCsvBtn.addEventListener('click', () => {
+      console.log('🔄 Exportando datos filtrados...');
+      exportarDatosFiltrados();
+    });
+  }
+  
+  if (exportAllCsvBtn) {
+    exportAllCsvBtn.addEventListener('click', () => {
+      console.log('🔄 Exportando todos los datos...');
+      exportarTodosLosDatos();
+    });
+  }
+  
+  // ============================================================================
   // EVENT LISTENERS DE PAGINACIÓN
   // ============================================================================
   
@@ -832,6 +1257,27 @@ function setupVisualizarDatosListeners() {
     const tooltip = document.getElementById('foreignKeyTooltip');
     if (tooltip && tooltip.style.display === 'block') {
       ocultarTooltip();
+    }
+  });
+  
+  // ============================================================================
+  // EVENT LISTENERS DEL MODAL
+  // ============================================================================
+  
+  // Cerrar modal con tecla Escape (usando delegación de eventos)
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+      const modal = document.getElementById('caso-modal-visualizar');
+      if (modal && modal.classList.contains('show')) {
+        cerrarModalCasoVisualizar();
+      }
+    }
+  });
+  
+  // Cerrar modal al hacer click en el overlay (usando delegación de eventos)
+  document.addEventListener('click', function(e) {
+    if (e.target.id === 'caso-modal-visualizar') {
+      cerrarModalCasoVisualizar();
     }
   });
 }

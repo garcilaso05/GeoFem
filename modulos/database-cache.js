@@ -804,6 +804,76 @@ export function getCacheStatus() {
 }
 
 /**
+ * Recargar SOLO los enumerados (optimizado para crear_enumerado.js)
+ * No recarga tablas ni columnas
+ */
+export async function reloadEnums() {
+  console.log('♻️ Recargando solo ENUMs...');
+  
+  const success = await loadEnums();
+  
+  if (success) {
+    cache.lastUpdate = new Date().toISOString();
+    guardarCacheEnStorage();
+    console.log(`✅ ENUMs recargados: ${Object.keys(cache.enums).length} tipos disponibles`);
+  } else {
+    console.error('❌ Error recargando ENUMs');
+  }
+  
+  return success;
+}
+
+/**
+ * Recargar SOLO una tabla específica (optimizado para editar_tabla.js)
+ * @param {string} schema - Schema (mdr o hrf)
+ * @param {string} tabla - Nombre de la tabla
+ */
+export async function reloadTable(schema, tabla) {
+  console.log(`♻️ Recargando solo tabla ${schema}.${tabla}...`);
+  
+  const success = await loadTableColumns(schema, tabla);
+  
+  if (success) {
+    cache.lastUpdate = new Date().toISOString();
+    guardarCacheEnStorage();
+    console.log(`✅ Tabla ${schema}.${tabla} recargada`);
+  } else {
+    console.error(`❌ Error recargando tabla ${schema}.${tabla}`);
+  }
+  
+  return success;
+}
+
+/**
+ * Recargar TODAS las tablas de un schema (opcional)
+ * @param {string} schema - Schema (mdr o hrf)
+ */
+export async function reloadSchema(schema) {
+  console.log(`♻️ Recargando schema completo: ${schema}...`);
+  
+  // Recargar lista de tablas
+  const tablesSuccess = await loadTables(schema);
+  if (!tablesSuccess) {
+    console.error(`❌ Error recargando lista de tablas de ${schema}`);
+    return false;
+  }
+  
+  // Recargar columnas de todas las tablas
+  const tablas = cache.tables[schema];
+  for (const tabla of tablas) {
+    const success = await loadTableColumns(schema, tabla);
+    if (!success) {
+      console.warn(`⚠️ Error recargando ${schema}.${tabla}`);
+    }
+  }
+  
+  cache.lastUpdate = new Date().toISOString();
+  guardarCacheEnStorage();
+  console.log(`✅ Schema ${schema} recargado completamente (${tablas.length} tablas)`);
+  return true;
+}
+
+/**
  * Limpiar la caché (útil para logout)
  * También elimina la caché de sessionStorage
  */
@@ -881,6 +951,11 @@ window.dbCache = {
   isCacheReady,
   getCacheStatus,
   clearCache,
+  // Funciones de recarga selectiva (optimizadas)
+  reloadEnums,
+  reloadTable,
+  reloadSchema,
+  // Helpers de columnas
   getForeignKeys,
   getPrimaryKey,
   getColumnEnumType,

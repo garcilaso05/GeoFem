@@ -421,28 +421,50 @@ async function mostrarResultados(resultados) {
     resultsCount.innerHTML = '<span class="result-status no-results-status">❌ No se encontraron casos</span> que cumplan los criterios especificados';
     resultsTable.innerHTML = '<div class="no-results">No se encontraron casos que cumplan los criterios de búsqueda.<br><em>Intenta ajustar los filtros y buscar nuevamente.</em></div>';
     return;
-  } else if (resultados.length === 1) {
-    resultsCount.innerHTML = '<span class="result-status success-status">🎯 Se encontró 1 caso</span> que cumple los criterios';
-  } else {
-    resultsCount.innerHTML = `<span class="result-status success-status">📊 Se encontraron ${resultados.length} casos</span> que cumplen los criterios`;
   }
   
-  // Crear tarjetas para cada resultado
+  if (resultados.length === 1) {
+    resultsCount.innerHTML = '<span class="result-status success-status">🎯 Se encontró <strong>1</strong> caso</span> que cumple los criterios';
+  } else {
+    resultsCount.innerHTML = `<span class="result-status success-status">📊 Se encontraron <strong>${resultados.length}</strong> casos</span> que cumplen los criterios`;
+  }
+  
+  // Crear tarjetas elegantes para cada resultado
   let html = '<div class="results-cards-container">';
   
   for (const resultado of resultados) {
     const casoId = resultado.id;
+    const schema = window.getCurrentSchema();
+    const tablasPrevistas = window.dbCache.getTables(schema).filter(tabla => 
+      tabla !== 'huerfano' && tabla !== 'madre'
+    ).length;
+    
     html += `
-      <div class="result-card">
-        <div class="result-card-header" onclick="toggleCasoDetails(${casoId})">
+      <div class="result-card" onclick="abrirModalCaso(${casoId})">
+        <div class="result-card-header">
           <div class="result-header-content">
-            <span class="result-icon">📋</span>
-            <span class="result-id">Caso ID: ${casoId}</span>
+            <div class="result-case-badge">
+              <span>📋</span>
+              <span>ID ${casoId}</span>
+            </div>
+            <div class="result-case-info">
+              <h4 class="result-case-title">Caso de Feminicidio #${casoId}</h4>
+              <p class="result-case-subtitle">Esquema: ${schema.toUpperCase()}</p>
+            </div>
           </div>
-          <span class="toggle-icon" id="toggle-caso-${casoId}">▼</span>
-        </div>
-        <div class="result-card-body" id="caso-details-${casoId}" style="display: none;">
-          <div class="loading-text">🔄 Cargando datos relacionados...</div>
+          <div class="result-preview-info">
+            <div class="result-stat">
+              <div class="result-stat-number">${tablasPrevistas}</div>
+              <div class="result-stat-label">Tablas</div>
+            </div>
+            <div class="result-stat">
+              <div class="result-stat-number">•••</div>
+              <div class="result-stat-label">Campos</div>
+            </div>
+          </div>
+          <div class="result-view-icon">
+            <img src="agregar.png" alt="Ver detalles" style="width: 24px; height: 24px;">
+          </div>
         </div>
       </div>
     `;
@@ -452,78 +474,161 @@ async function mostrarResultados(resultados) {
   resultsTable.innerHTML = html;
 }
 
-// Toggle de detalles de un caso
-async function toggleCasoDetails(casoId) {
-  const detailsDiv = document.getElementById(`caso-details-${casoId}`);
-  const toggleIcon = document.getElementById(`toggle-caso-${casoId}`);
+// Abrir modal elegante con detalles del caso
+async function abrirModalCaso(casoId) {
+  const modal = document.getElementById('caso-modal');
+  const modalTitle = document.getElementById('modal-caso-title');
+  const modalSubtitle = document.getElementById('modal-caso-subtitle');
+  const modalContent = document.getElementById('modal-caso-content');
   
-  if (detailsDiv.style.display === 'none') {
-    // Expandir - cargar datos si no están cargados
-    detailsDiv.style.display = 'block';
-    toggleIcon.textContent = '▲';
-    
-    if (detailsDiv.querySelector('.loading-text')) {
-      // Primera vez que se expande - cargar datos
-      await cargarDetallesCaso(casoId, detailsDiv);
-    }
-  } else {
-    // Colapsar
-    detailsDiv.style.display = 'none';
-    toggleIcon.textContent = '▼';
+  // Configurar título del modal
+  const schema = window.getCurrentSchema();
+  modalTitle.textContent = `Caso de Feminicidio #${casoId}`;
+  modalSubtitle.textContent = `Esquema: ${schema.toUpperCase()} • Información detallada`;
+  
+  // Mostrar modal con estado de carga
+  modalContent.className = 'modal-loading';
+  modalContent.innerHTML = `
+    <div class="loading-spinner"></div>
+    <p>Cargando información completa del caso...</p>
+  `;
+  
+  // Mostrar modal con animación
+  modal.style.display = 'flex';
+  setTimeout(() => modal.classList.add('show'), 10);
+  
+  // Cargar datos del caso
+  try {
+    await cargarDatosModalCaso(casoId, modalContent);
+  } catch (error) {
+    console.error('Error cargando datos del modal:', error);
+    modalContent.innerHTML = `
+      <div style="text-align: center; color: #dc3545; padding: 40px;">
+        <h4>❌ Error al cargar datos</h4>
+        <p>${error.message}</p>
+      </div>
+    `;
   }
 }
 
-// Cargar todos los detalles de un caso (tablas relacionadas)
-async function cargarDetallesCaso(casoId, container) {
+// Cerrar modal elegante
+function cerrarModalCaso() {
+  const modal = document.getElementById('caso-modal');
+  modal.classList.remove('show');
+  setTimeout(() => {
+    modal.style.display = 'none';
+  }, 300);
+}
+
+// Cerrar modal con tecla Escape
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') {
+    cerrarModalCaso();
+  }
+});
+
+// Cerrar modal al hacer click en el overlay
+document.getElementById('caso-modal').addEventListener('click', function(e) {
+  if (e.target === this) {
+    cerrarModalCaso();
+  }
+});
+
+// Buscar datos de un caso específico en una tabla
+async function buscarDatosEnTabla(tabla, casoId, schema) {
   try {
-    console.log(`🔍 Cargando detalles del caso ${casoId}...`);
-    console.log(`📋 Tablas relacionadas:`, tablasRelacionadas);
+    const supabase = getSupabaseInstance();
+    if (!supabase) return null;
     
-    let html = '<div class="caso-tables-list">';
-    let tablasEncontradas = 0;
+    console.log(`🔍 Buscando datos en tabla ${tabla} para caso ${casoId}`);
     
-    // Obtener todas las tablas relacionadas (sin la raíz)
+    const { data, error } = await supabase
+      .schema(schema)
+      .from(tabla)
+      .select('*')
+      .eq('id', casoId)
+      .single();
+    
+    if (error) {
+      if (error.code === 'PGRST116') {
+        // No se encontraron datos (normal)
+        console.log(`ℹ️ No hay datos en ${tabla} para caso ${casoId}`);
+        return null;
+      }
+      throw error;
+    }
+    
+    return data;
+  } catch (error) {
+    console.error(`❌ Error buscando en tabla ${tabla}:`, error);
+    return null;
+  }
+}
+
+// Cargar datos del caso para el modal
+async function cargarDatosModalCaso(casoId, container) {
+  try {
+    console.log(`🔍 Cargando datos del modal para caso ${casoId}...`);
+    
+    const schema = window.getCurrentSchema();
+    const tablasRelacionadas = window.dbCache.getTables(schema).filter(tabla => 
+      tabla !== 'huerfano' && tabla !== 'madre'
+    );
+    
+    let html = '<div class="modal-caso-details"><div class="modal-tables-grid">';
+    let datosEncontrados = false;
+    let totalCampos = 0;
+    
     for (const tabla of tablasRelacionadas) {
-      console.log(`🔍 Buscando datos en tabla: ${tabla} para ID ${casoId}`);
-      const datos = await obtenerDatosTablaPorId(tabla, casoId);
+      const datos = await buscarDatosEnTabla(tabla, casoId, schema);
       
-      if (datos && Object.keys(datos).length > 0) {
-        console.log(`✅ Datos encontrados en ${tabla}:`, datos);
-        tablasEncontradas++;
-        
+      if (datos && Object.keys(datos).length > 1) { // Más que solo ID
+        datosEncontrados = true;
         const camposCount = Object.keys(datos).length - 1; // -1 por el campo ID
+        totalCampos += camposCount;
+        
         html += `
-          <div class="table-item">
-            <div class="table-item-header" onclick="toggleTableFields('${tabla}', ${casoId})">
-              <div class="table-header-content">
-                <span class="table-name">${formatDisplayName(tabla)}</span>
-                <span class="table-field-count">${camposCount} campos</span>
-              </div>
-              <span class="toggle-icon" id="toggle-table-${tabla}-${casoId}">▶</span>
+          <div class="modal-table-section">
+            <div class="modal-table-header">
+              <span class="modal-table-name">${formatDisplayName(tabla)}</span>
+              <span class="modal-field-count">${camposCount} campos</span>
             </div>
-            <div class="table-item-body" id="table-fields-${tabla}-${casoId}" style="display: none;">
-              ${generarCamposTabla(datos)}
+            <div class="modal-table-fields">
+              ${generarCamposModalTabla(datos)}
             </div>
           </div>
         `;
-      } else {
-        console.log(`⚠️ No hay datos en ${tabla} para ID ${casoId}`);
       }
     }
     
-    html += '</div>';
+    html += '</div></div>';
     
-    if (tablasEncontradas === 0) {
-      container.innerHTML = '<div style="text-align: center; color: #666; padding: 20px;">No se encontraron datos relacionados para este caso</div>';
-      console.warn(`⚠️ No se encontraron datos en ninguna tabla para el caso ${casoId}`);
+    if (!datosEncontrados) {
+      container.innerHTML = `
+        <div class="modal-caso-details" style="text-align: center; color: #666; padding: 60px 30px;">
+          <h4>📭 Sin datos disponibles</h4>
+          <p>No se encontraron datos relacionados para este caso en las tablas del esquema.</p>
+        </div>
+      `;
     } else {
       container.innerHTML = html;
-      console.log(`✅ Se cargaron ${tablasEncontradas} tablas con datos`);
+      
+      // Actualizar contador en la tarjeta original si es posible
+      const cards = document.querySelectorAll('.result-card');
+      cards.forEach(card => {
+        const badge = card.querySelector('.result-case-badge span:last-child');
+        if (badge && badge.textContent.includes(casoId)) {
+          const camposStat = card.querySelector('.result-stat:last-child .result-stat-number');
+          if (camposStat) {
+            camposStat.textContent = totalCampos;
+          }
+        }
+      });
     }
     
   } catch (error) {
-    console.error('❌ Error cargando detalles del caso:', error);
-    container.innerHTML = `<div style="color: red; padding: 15px;">Error al cargar detalles: ${error.message}</div>`;
+    console.error('❌ Error cargando datos del modal:', error);
+    throw error;
   }
 }
 
@@ -568,7 +673,29 @@ async function obtenerDatosTablaPorId(tabla, id) {
   }
 }
 
-// Generar HTML para los campos de una tabla
+// Generar HTML para los campos del modal
+function generarCamposModalTabla(datos) {
+  let html = '<div class="modal-fields-grid">';
+  
+  for (const [campo, valor] of Object.entries(datos)) {
+    // Saltar el campo ID
+    if (campo === 'id') continue;
+    
+    const valorMostrar = valor !== null && valor !== undefined && valor !== '' ? valor : '';
+    
+    html += `
+      <div class="modal-field-item">
+        <span class="modal-field-label">${formatDisplayName(campo)}</span>
+        <span class="modal-field-value">${valorMostrar}</span>
+      </div>
+    `;
+  }
+  
+  html += '</div>';
+  return html;
+}
+
+// Generar HTML para los campos de una tabla (versión legacy si se necesita)
 function generarCamposTabla(datos) {
   let html = '<div class="fields-grid">';
   
@@ -605,7 +732,8 @@ function toggleTableFields(tabla, casoId) {
 }
 
 // Hacer funciones globales para onclick
-window.toggleCasoDetails = toggleCasoDetails;
+window.abrirModalCaso = abrirModalCaso;
+window.cerrarModalCaso = cerrarModalCaso;
 window.toggleTableFields = toggleTableFields;
 
 // Limpiar filtros

@@ -147,13 +147,14 @@ BEGIN
     RAISE EXCEPTION 'Debes estar autenticado para crear ENUMs';
   END IF;
   
-  -- Validar schema
-  IF p_schema NOT IN ('mdr', 'hrf') THEN
-    RAISE EXCEPTION 'Schema inválido. Solo se permiten mdr o hrf';
+  -- Validar schema (aunque los ENUMs se crean en public, validamos el contexto)
+  IF p_schema NOT IN ('mdr', 'hrf', 'public') THEN
+    RAISE EXCEPTION 'Schema inválido. Solo se permiten mdr, hrf o public';
   END IF;
 
-  -- Establecer search_path y ejecutar
-  EXECUTE format('SET search_path TO %I', p_schema);
+  -- Los ENUMs SIEMPRE se crean en el schema public en PostgreSQL
+  -- Esto es estándar y permite que estén disponibles globalmente
+  EXECUTE format('SET search_path TO public, pg_catalog');
   EXECUTE p_query;
   EXECUTE 'SET search_path TO public';
 END;
@@ -162,7 +163,7 @@ $$;
 GRANT EXECUTE ON FUNCTION public.exec_create_enum(text, text) TO authenticated;
 
 COMMENT ON FUNCTION public.exec_create_enum(text, text) IS 
-'Crea un enum en el schema especificado. Solo para usuarios autenticados.';
+'Crea un ENUM en el schema public (donde deben estar todos los ENUMs en PostgreSQL). Solo para usuarios autenticados.';
 
 -- ============================================================
 -- AÑADIR COLUMNA - Solo usuarios autenticados

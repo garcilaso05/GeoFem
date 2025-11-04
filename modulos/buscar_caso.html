@@ -1,5 +1,5 @@
 <div class="module-content">
-  <h2>🔍 Buscar Caso</h2>
+  <h2>Búsqueda Avanzada</h2>
   <p class="text-gray">Filtra y busca casos aplicando criterios sobre las diferentes tablas relacionadas del esquema actual.</p>
   
   <!-- Información del esquema actual -->
@@ -45,5 +45,29 @@
       <p id="results-count" class="results-summary mb-15"></p>
     </div>
     <div id="results-table"></div>
+  </div>
+</div>
+
+<!-- Modal para mostrar detalles del caso -->
+<div id="caso-modal" class="modal-overlay" style="display: none;">
+  <div class="modal-container">
+    <div class="modal-header">
+      <div class="modal-title-section">
+        <span class="modal-icon">📋</span>
+        <div class="modal-title-info">
+          <h3 id="modal-caso-title">Caso de Feminicidio</h3>
+          <p id="modal-caso-subtitle">Detalles completos</p>
+        </div>
+      </div>
+      <button class="modal-close-btn" onclick="cerrarModalCaso()">
+        <span>×</span>
+      </button>
+    </div>
+    <div class="modal-body">
+      <div id="modal-caso-content" class="modal-loading">
+        <div class="loading-spinner"></div>
+        <p>Cargando información del caso...</p>
+      </div>
+    </div>
   </div>
 </div>

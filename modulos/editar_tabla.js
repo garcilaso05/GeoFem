@@ -22,30 +22,42 @@ function getSupabaseInstance() {
 }
 
 async function cargarTablas() {
-  const supabase = getSupabaseInstance();
-  if (!supabase) return;
   const select = document.getElementById("editTableSelect");
   if (!select) return;
   
   // Limpiar opciones existentes para evitar duplicados
   select.innerHTML = '<option value="">Selecciona una tabla...</option>';
   
-  const schema = window.getCurrentSchema();
-  const { data, error } = await supabase.rpc(`${schema}_get_public_tables`);
-  if (error || !data) {
-    console.error("Error completo:", error);
-    return;
+  try {
+    // Esperar a que la caché esté lista
+    if (window.dbCache && !window.dbCache.isCacheReady()) {
+      console.log('⏳ Esperando a que la caché se inicialice...');
+      await window.dbCache.waitForCache();
+    }
+    
+    // OPTIMIZACIÓN: Usar caché en lugar de RPC
+    const schema = window.getCurrentSchema();
+    const tablas = window.dbCache.getTables(schema);
+    
+    if (!tablas || tablas.length === 0) {
+      console.warn('No se encontraron tablas en el schema:', schema);
+      return;
+    }
+    
+    console.log(`✅ Cargadas ${tablas.length} tablas desde caché`);
+    
+    // Agregar opciones al select
+    tablas.forEach(tableName => {
+      const opt = document.createElement("option");
+      opt.value = tableName;
+      opt.textContent = formatDisplayName(tableName);
+      select.appendChild(opt);
+    });
+    
+  } catch (error) {
+    console.error("Error cargando tablas:", error);
+    select.innerHTML = '<option value="">Error cargando tablas</option>';
   }
-  
-  // Usar Set para evitar duplicados
-  const uniqueTables = [...new Set(data.map(row => row.table_name))];
-  
-  uniqueTables.forEach(tableName => {
-    const opt = document.createElement("option");
-    opt.value = tableName;
-    opt.textContent = formatDisplayName(tableName);
-    select.appendChild(opt);
-  });
 }
 
 async function cargarCamposTabla(tabla) {
@@ -89,20 +101,22 @@ async function cargarCamposTabla(tabla) {
     data.forEach(col => {
       const div = document.createElement('div');
       div.className = 'editFieldRow';
-      div.style.marginBottom = '10px';
-      div.style.padding = '10px';
-      div.style.border = '1px solid #ddd';
-      div.style.borderRadius = '4px';
+      div.style.cssText = 'margin-bottom: 10px; padding: 10px; border: 1px solid #ddd; border-radius: 4px; background-color: #fafafa;';
       
       const columnName = col.column_name;
       const dataType = col.data_type;
       const maxLength = col.character_maximum_length;
       const fkComment = col.fk_comment || '';
       const isPrimary = col.is_primary;
+      const udtName = col.udt_name || '';
       
-      // Mostrar tipo con longitud si existe
+      // Mostrar tipo con información adicional
       let typeDisplay = dataType;
-      if (maxLength) {
+      
+      // Si es USER-DEFINED (ENUM), mostrar el nombre del ENUM
+      if (dataType === 'USER-DEFINED' && udtName) {
+        typeDisplay = `${udtName} (ENUM)`;
+      } else if (maxLength) {
         typeDisplay += `(${maxLength})`;
       }
       
@@ -114,15 +128,13 @@ async function cargarCamposTabla(tabla) {
       div.innerHTML = `
         <div style="margin-bottom: 8px;">
           <input type="text" value="${columnName}" class="editFieldName" data-original="${columnName}" 
-                 style="margin-right: 10px; padding: 4px; width: 150px;" />
-          <span style="color:#888; margin-right: 10px; font-size: 12px;">${typeDisplay}</span>
-          <button type="button" class="renameFieldBtn btn-secondary" style="margin-right: 5px; padding: 4px 8px;">Renombrar</button>
-          ${isPrimary ? '<span style="color: #4CAF50; font-weight: bold; margin-left: 10px;">PK</span>' : ''}
-          ${fkComment ? '<span style="color: #2196F3; font-weight: bold; margin-left: 5px;">FK</span>' : ''}
+                 style="margin-right: 10px; padding: 4px; width: 150px; font-family: monospace;" />
+          <span style="color:#666; margin-right: 10px; font-size: 13px; background-color: #e8e8e8; padding: 3px 8px; border-radius: 3px;">${typeDisplay}</span>
+          <button type="button" class="renameFieldBtn btn-secondary" style="padding: 4px 10px; font-size: 13px; margin-right: 5px; background-color: #2196F3; color: white; border: none; border-radius: 3px; cursor: pointer;">✏️ Renombrar</button>
+          ${isPrimary ? '<span style="color: #4CAF50; font-weight: bold; margin-left: 10px; background-color: #e8f5e9; padding: 3px 8px; border-radius: 3px; font-size: 12px;">🔑 PK</span>' : ''}
+          ${fkComment ? '<span style="color: #2196F3; font-weight: bold; margin-left: 5px; background-color: #e3f2fd; padding: 3px 8px; border-radius: 3px; font-size: 12px;">🔗 FK</span>' : ''}
         </div>
       `;
-      
-      // Botones de borrado eliminados por seguridad
       
       container.appendChild(div);
     });
@@ -143,18 +155,34 @@ async function cargarCamposTabla(tabla) {
 async function renombrarCampo(tabla, oldName, newName) {
   const supabase = getSupabaseInstance();
   if (!supabase) return;
+  
+  // Validar nombres
+  if (!sanitizeIdentifier(oldName) || !sanitizeIdentifier(newName)) {
+    return mostrarMsg('Nombres de columna inválidos', 'red');
+  }
+  
   try {
     const schema = window.getCurrentSchema();
     const { error } = await supabase.rpc('rename_column_safe', {
       p_schema: schema,
       p_tabla: tabla,
-      p_old_name: oldName,
-      p_new_name: newName
+      p_columna_antigua: oldName,
+      p_columna_nueva: newName
     });
+    
     if (error) throw error;
+    
     mostrarMsg('Campo renombrado con éxito', 'green');
+    
+    // Recargar SOLO esta tabla (optimizado)
+    if (window.dbCache) {
+      await window.dbCache.reloadTable(schema, tabla);
+    }
+    
     cargarCamposTabla(tabla);
+    
   } catch (err) {
+    console.error('Error renombrando campo:', err);
     mostrarMsg('Error renombrando campo: ' + err.message, 'red');
   }
 }
@@ -167,43 +195,80 @@ async function anadirCampo(tabla) {
   const container = document.getElementById("editFieldsContainer");
   const formDiv = document.createElement('div');
   formDiv.id = 'addFieldForm';
-  formDiv.style.margin = '10px 0';
+  formDiv.className = 'editFieldRow';
+  formDiv.style.cssText = 'margin-bottom: 10px; padding: 10px; border: 2px solid #4CAF50; border-radius: 4px; background-color: #f0f8f0;';
   
-  const tablasExistentes = await (async () => {
-    const supabase = getSupabaseInstance();
-    if (!supabase) return [];
-    const schema = window.getCurrentSchema();
-    const { data, error } = await supabase.rpc(`${schema}_get_public_tables`);
-    if (error || !data) return [];
-    return data.map(row => row.table_name);
-  })();
+  // OPTIMIZACIÓN: Obtener tablas y ENUMs desde caché
+  const schema = window.getCurrentSchema();
+  const tablasExistentes = window.dbCache.getTables(schema) || [];
+  const enumsDisponibles = window.dbCache.getAllEnums() || {};
   
-  // Tipos de datos
+  // Tipos de datos básicos
   const tipos = [
-    { value: "INT", label: "Entero" },
-    { value: "DECIMAL", label: "Número con decimales" },
-    { value: "VARCHAR(25)", label: "Texto corto (25)" },
-    { value: "VARCHAR(50)", label: "Texto medio (50)" },
-    { value: "VARCHAR(255)", label: "Texto grande (255)" },
-    { value: "BOOLEAN", label: "Booleano" },
-    { value: "REFERENCIA", label: "Referencia a..." }
+    { value: "integer", label: "Entero (integer)" },
+    { value: "bigint", label: "Entero largo (bigint)" },
+    { value: "numeric", label: "Número con decimales (numeric)" },
+    { value: "varchar(25)", label: "Texto corto (25)" },
+    { value: "varchar(50)", label: "Texto medio (50)" },
+    { value: "varchar(100)", label: "Texto largo (100)" },
+    { value: "varchar(255)", label: "Texto muy largo (255)" },
+    { value: "text", label: "Texto sin límite (text)" },
+    { value: "boolean", label: "Booleano (true/false)" },
+    { value: "date", label: "Fecha (date)" },
+    { value: "timestamp", label: "Fecha y hora (timestamp)" }
   ];
-  // Formulario
+  
+  // Formulario con mejor diseño
   formDiv.innerHTML = `
-    <input type="text" id="newFieldName" placeholder="Nombre del campo" style="width:140px;" />
-    <select id="newFieldType"></select>
-    <span id="refTableContainer" style="display:none;"><select id="newRefTable"></select></span>
-    <button id="confirmAddFieldBtn">Añadir</button>
-    <button id="cancelAddFieldBtn">Cancelar</button>
+    <div style="margin-bottom: 8px;">
+      <input type="text" id="newFieldName" placeholder="Nombre del campo" 
+             style="margin-right: 10px; padding: 4px; width: 150px;" />
+      <select id="newFieldType" style="margin-right: 10px; padding: 4px; min-width: 200px;"></select>
+      <span id="refTableContainer" style="display:none;">
+        <select id="newRefTable" style="margin-right: 10px; padding: 4px; min-width: 150px;"></select>
+      </span>
+      <button type="button" id="confirmAddFieldBtn" style="padding: 4px 12px; font-size: 13px; background-color: #4CAF50; color: white; border: none; border-radius: 3px; cursor: pointer; margin-right: 5px;">✓ Añadir</button>
+      <button type="button" id="cancelAddFieldBtn" style="padding: 4px 12px; font-size: 13px; background-color: #f44336; color: white; border: none; border-radius: 3px; cursor: pointer;">✗ Cancelar</button>
+    </div>
   `;
-  // Rellenar tipos
+  
+  // Rellenar tipos básicos
   const typeSelect = formDiv.querySelector('#newFieldType');
+  
+  // Separador de tipos básicos
+  const optGroupBasic = document.createElement('optgroup');
+  optGroupBasic.label = 'Tipos Básicos';
   tipos.forEach(opt => {
     const o = document.createElement('option');
     o.value = opt.value;
     o.textContent = opt.label;
-    typeSelect.appendChild(o);
+    optGroupBasic.appendChild(o);
   });
+  typeSelect.appendChild(optGroupBasic);
+  
+  // Agregar ENUMs si existen
+  const enumNames = Object.keys(enumsDisponibles);
+  if (enumNames.length > 0) {
+    const optGroupEnum = document.createElement('optgroup');
+    optGroupEnum.label = '📋 Enumerados (ENUM)';
+    enumNames.forEach(enumName => {
+      const o = document.createElement('option');
+      o.value = enumName;
+      o.textContent = `${enumName} (ENUM)`;
+      optGroupEnum.appendChild(o);
+    });
+    typeSelect.appendChild(optGroupEnum);
+  }
+  
+  // Opción de referencia
+  const optGroupRef = document.createElement('optgroup');
+  optGroupRef.label = '🔗 Relaciones';
+  const refOpt = document.createElement('option');
+  refOpt.value = 'REFERENCIA';
+  refOpt.textContent = 'Referencia a otra tabla (FK)';
+  optGroupRef.appendChild(refOpt);
+  typeSelect.appendChild(optGroupRef);
+  
   // Rellenar tablas para referencias
   const refSelect = formDiv.querySelector('#newRefTable');
   tablasExistentes.forEach(tablaRef => {
@@ -212,10 +277,11 @@ async function anadirCampo(tabla) {
     o.textContent = tablaRef;
     refSelect.appendChild(o);
   });
+  
   // Mostrar/ocultar selector de tabla de referencia
   typeSelect.addEventListener('change', function() {
     if (typeSelect.value === "REFERENCIA") {
-      formDiv.querySelector('#refTableContainer').style.display = '';
+      formDiv.querySelector('#refTableContainer').style.display = 'inline';
     } else {
       formDiv.querySelector('#refTableContainer').style.display = 'none';
     }
@@ -225,30 +291,78 @@ async function anadirCampo(tabla) {
     const nombre = formDiv.querySelector('#newFieldName').value.trim();
     let tipo = typeSelect.value;
     if (!nombre) return mostrarMsg('Introduce un nombre de campo', 'red');
-    let columnSql;
-    if (tipo === 'REFERENCIA') {
-      const refTable = refSelect.value;
-      if (!refTable) return mostrarMsg('Selecciona la tabla a referenciar', 'red');
-      tipo = 'INT';
-      columnSql = `${sanitizeIdentifier(nombre)} ${tipo} REFERENCES ${sanitizeIdentifier(refTable)}(id)`;
-    } else {
-      columnSql = `${sanitizeIdentifier(nombre)} ${tipo}`;
+    
+    // Validar nombre de columna
+    if (!sanitizeIdentifier(nombre)) {
+      return mostrarMsg('Nombre de columna inválido', 'red');
     }
+    
     const supabase = getSupabaseInstance();
     if (!supabase) return;
+    
+    // Deshabilitar botones mientras se procesa
+    const btnConfirm = formDiv.querySelector('#confirmAddFieldBtn');
+    const btnCancel = formDiv.querySelector('#cancelAddFieldBtn');
+    btnConfirm.disabled = true;
+    btnCancel.disabled = true;
+    btnConfirm.textContent = '⏳ Añadiendo...';
+    
     try {
       const schema = window.getCurrentSchema();
-      const { error } = await supabase.rpc('add_column_safe', {
-        p_schema: schema,
-        p_tabla: tabla,
-        p_column_sql: columnSql
-      });
-      if (error) throw error;
-      mostrarMsg('Campo añadido con éxito', 'green');
-      cargarCamposTabla(tabla);
+      
+      // Manejar referencias (FK)
+      if (tipo === 'REFERENCIA') {
+        const refTable = refSelect.value;
+        if (!refTable) {
+          btnConfirm.disabled = false;
+          btnCancel.disabled = false;
+          btnConfirm.textContent = '✓ Añadir';
+          return mostrarMsg('Selecciona la tabla a referenciar', 'red');
+        }
+        
+        mostrarMsg('Creando columna INT para FK...', 'orange');
+        
+        const { error } = await supabase.rpc('add_column_safe', {
+          p_schema: schema,
+          p_tabla: tabla,
+          p_columna: nombre,
+          p_tipo: 'integer',
+          p_default: null
+        });
+        
+        if (error) throw error;
+        mostrarMsg('Campo INT creado. Configura la FK manualmente en SQL si es necesario.', 'orange');
+        
+      } else {
+        // Tipo de dato normal (incluye ENUMs)
+        const { error } = await supabase.rpc('add_column_safe', {
+          p_schema: schema,
+          p_tabla: tabla,
+          p_columna: nombre,
+          p_tipo: tipo,
+          p_default: null
+        });
+        
+        if (error) throw error;
+        mostrarMsg('Campo añadido con éxito ✅', 'green');
+      }
+      
+      // Recargar SOLO esta tabla (optimizado, no recarga todo el cache)
+      console.log(`♻️ Recargando solo tabla ${schema}.${tabla}...`);
+      if (window.dbCache) {
+        await window.dbCache.reloadTable(schema, tabla);
+      }
+      
+      // Recargar vista de columnas
+      await cargarCamposTabla(tabla);
       formDiv.remove();
+      
     } catch (err) {
+      console.error('Error añadiendo campo:', err);
       mostrarMsg('Error añadiendo campo: ' + err.message, 'red');
+      btnConfirm.disabled = false;
+      btnCancel.disabled = false;
+      btnConfirm.textContent = '✓ Añadir';
     }
   };
   // Cancelar
@@ -276,13 +390,6 @@ function setupEditarTablaListeners() {
     const tabla = select.value;
     if (tabla) anadirCampo(tabla);
   };
-  // Botón de borrar tabla eliminado - no se permite borrar tablas
-  const deleteTableBtn = document.getElementById("deleteTableBtn");
-  if (deleteTableBtn) {
-    deleteTableBtn.disabled = true;
-    deleteTableBtn.title = 'Por seguridad, no se permite borrar tablas';
-    deleteTableBtn.style.opacity = '0.5';
-  }
   
   document.getElementById("editFieldsContainer").onclick = function(e) {
     const tabla = select.value;
@@ -294,9 +401,6 @@ function setupEditarTablaListeners() {
       if (oldName && newName && oldName !== newName) {
         renombrarCampo(tabla, oldName, newName);
       }
-    } else if (e.target.classList.contains('deleteFieldBtn')) {
-      // Borrado de campos deshabilitado
-      mostrarMsg('Por seguridad, no se permite borrar campos', 'red');
     }
   };
 }
@@ -309,6 +413,5 @@ window.addEventListener('schema:change', () => {
   document.getElementById('editFieldsContainer').style.display = 'none';
 });
 
-
-setupEditarTablaListeners();
+// Inicializar una sola vez
 setupEditarTablaListeners();
