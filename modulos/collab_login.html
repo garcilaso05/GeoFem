@@ -1,19 +1,41 @@
-<div>
-  <h2>Acceso Colaborador (Editor)</h2>
-  <div id="collab-message"></div>
-  <form id="collab-login-form">
-    <div>
-      <label for="collab-email">Email</label>
-      <input type="email" id="collab-email" required>
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Acceso Colaborador</title>
+  <link rel="stylesheet" href="/estilos.css?v=3">
+  <style>
+    /* Small popup-specific adjustments */
+    body { background: linear-gradient(180deg,#f7f7fb,#eef2f8); }
+    .popup-container { max-width: 420px; margin: 18px auto; }
+    #collab-message .message { margin-bottom: 12px; }
+  </style>
+</head>
+<body>
+  <main id="auth-content" class="popup-container">
+    <div class="auth-logo-header">
+      <img src="/logo.png" alt="GeoFem" class="auth-logo">
+      <h1 class="auth-title">Acceso Colaborador</h1>
     </div>
-    <div>
-      <label for="collab-password">Contraseña</label>
-      <input type="password" id="collab-password" required>
-    </div>
-    <div style="margin-top:8px;">
+
+    <div id="collab-message"></div>
+
+    <form id="collab-login-form">
+      <div class="form-group">
+        <label for="collab-email">Email</label>
+        <input type="email" id="collab-email" required placeholder="tucorreo@ejemplo.com">
+      </div>
+      <div class="form-group">
+        <label for="collab-password">Contraseña</label>
+        <input type="password" id="collab-password" required placeholder="Contraseña">
+      </div>
+
       <button type="submit">Entrar como Colaborador</button>
-    </div>
-  </form>
+    </form>
+
+    <p style="font-size:12px;color:#666;margin-top:12px">Si las credenciales son incorrectas verás un mensaje; si persiste, tu acceso de editor puede estar en proceso.</p>
+  </main>
 
   <script type="module">
     import { authenticateSupabase } from './authSupabase.js';
@@ -59,4 +81,5 @@
       showMessage('Autenticación exitosa. Puedes cerrar esta ventana.', 'success');
     });
   </script>
-</div>
+</body>
+</html>

@@ -1,6 +1,7 @@
 import { FIREBASE_API_KEY, db } from '../firebase-config.js';
 import { writeBatch, doc, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { initializeDatabaseCache, getTables } from './database-cache.js';
+import { formatDisplayName } from './seguridad.js';
 
 const form = document.getElementById('admin-create-form');
 const messageContainer = document.getElementById('admin-create-message');
@@ -14,40 +15,137 @@ function showMessage(msg, type = 'info') {
 
 async function renderTables() {
   try {
-    tablesContainer.innerHTML = '<div id="tables-loading">Cargando tablas...</div>';
-    await initializeDatabaseCache();
+    const loading = document.getElementById('tables-loading');
+    if (loading) loading.textContent = 'Cargando tablas...';
 
-    const schemas = ['mdr', 'hrf'];
-    const allTables = [];
-    schemas.forEach(s => {
-      const list = getTables(s) || [];
-      list.forEach(t => allTables.push(t));
-    });
+    // Try to obtain tables from in-memory dbCache first (fast)
+    let mdrList = [];
+    let hrfList = [];
 
-    // Deduplicate
-    const unique = Array.from(new Set(allTables)).sort();
-
-    if (unique.length === 0) {
-      tablesContainer.innerHTML = '<div>No se encontraron tablas</div>';
-      return;
+    try {
+      if (window.dbCache && typeof window.dbCache.getTables === 'function') {
+        mdrList = window.dbCache.getTables('mdr') || [];
+        hrfList = window.dbCache.getTables('hrf') || [];
+      }
+    } catch (err) {
+      console.warn('Error leyendo window.dbCache:', err);
+      mdrList = [];
+      hrfList = [];
     }
 
-    tablesContainer.innerHTML = '';
-    unique.forEach(tbl => {
-      const id = `table-${tbl}`;
+    // If not available in memory, try sessionStorage cache copy
+    if ((!mdrList || mdrList.length === 0) && (!hrfList || hrfList.length === 0)) {
+      try {
+        const raw = sessionStorage.getItem('geofem_db_cache');
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed && parsed.tables) {
+            mdrList = parsed.tables.mdr || [];
+            hrfList = parsed.tables.hrf || [];
+          }
+        }
+      } catch (err) {
+        console.warn('Error leyendo sessionStorage cache:', err);
+      }
+    }
+
+    // If still empty, fall back to initializeDatabaseCache but with timeout to avoid hanging
+    if ((!mdrList || mdrList.length === 0) && (!hrfList || hrfList.length === 0)) {
+      try {
+        // attempt but don't block forever (5s)
+        const initPromise = initializeDatabaseCache();
+        const timeout = new Promise((res, rej) => setTimeout(() => rej(new Error('timeout')), 5000));
+        await Promise.race([initPromise, timeout]);
+      } catch (err) {
+        console.warn('initializeDatabaseCache fallback failed or timed out:', err);
+      }
+
+      // try again reading exported getter which may now be populated
+      try {
+        mdrList = getTables('mdr') || [];
+        hrfList = getTables('hrf') || [];
+      } catch (err) {
+        console.warn('Error leyendo getTables tras fallback:', err);
+      }
+    }
+
+  const mdrContainer = document.getElementById('tables-mdr-list');
+  const hrfContainer = document.getElementById('tables-hrf-list');
+    const grid = document.getElementById('tables-grid');
+
+    // Las únicas tablas que deben forzarse como marcadas/disabled son
+    // las tablas con nombre EXACTO 'madre' y 'huerfano' (case-insensitive).
+    // No debemos inferir por subcadenas (ej. 'madre_acogida' NO debe forzarse).
+    const PARENT_EXACT = new Set(['madre', 'huerfano']);
+    function isParentTable(name) {
+      if (!name) return false;
+      return PARENT_EXACT.has(name.toLowerCase());
+    }
+
+    // Helper to create items
+    function createItem(tbl, schemaPrefix) {
+      const id = `${schemaPrefix}-${tbl}`;
       const wrapper = document.createElement('div');
-      wrapper.innerHTML = `
-        <label style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
-          <input type="checkbox" id="${id}" data-table="${tbl}" checked>
-          <span>${tbl}</span>
-        </label>
-      `;
-      tablesContainer.appendChild(wrapper);
+      wrapper.className = 'table-item';
+      const chk = document.createElement('input');
+      chk.type = 'checkbox';
+      chk.id = id;
+      chk.dataset.table = tbl;
+      chk.dataset.schema = schemaPrefix;
+      chk.checked = true;
+      if (isParentTable(tbl)) {
+        chk.checked = true;
+        chk.disabled = true; // cannot be unchecked
+      }
+      const label = document.createElement('span');
+      // Mostrar nombre humanizado pero conservar el atributo data-table con el nombre real
+      label.textContent = formatDisplayName(tbl) || tbl;
+      wrapper.appendChild(chk);
+      wrapper.appendChild(label);
+      return wrapper;
+    }
+
+    // Render MDR
+    if (mdrContainer) {
+      mdrContainer.innerHTML = '';
+      (mdrList || []).forEach(tbl => {
+        mdrContainer.appendChild(createItem(tbl, 'mdr'));
+      });
+    }
+
+    // Render HRF
+    if (hrfContainer) {
+      hrfContainer.innerHTML = '';
+      (hrfList || []).forEach(tbl => {
+        hrfContainer.appendChild(createItem(tbl, 'hrf'));
+      });
+    }
+
+    // Show grid
+    if (grid) grid.style.display = 'flex';
+    if (loading) loading.remove();
+
+    // Select-all handlers
+    const selectAllMdr = document.getElementById('select-all-mdr');
+    const selectAllHrf = document.getElementById('select-all-hrf');
+    if (selectAllMdr) selectAllMdr.addEventListener('click', () => {
+      const checks = mdrContainer.querySelectorAll('input[type=checkbox]');
+      // If all non-disabled are checked => uncheck them, else check them
+      const nonDisabled = Array.from(checks).filter(c => !c.disabled);
+      const allChecked = nonDisabled.every(c => c.checked);
+      nonDisabled.forEach(c => c.checked = !allChecked);
+    });
+    if (selectAllHrf) selectAllHrf.addEventListener('click', () => {
+      const checks = hrfContainer.querySelectorAll('input[type=checkbox]');
+      const nonDisabled = Array.from(checks).filter(c => !c.disabled);
+      const allChecked = nonDisabled.every(c => c.checked);
+      nonDisabled.forEach(c => c.checked = !allChecked);
     });
 
   } catch (err) {
     console.error('Error cargando tablas para admin:', err);
-    tablesContainer.innerHTML = '<div>Error cargando tablas</div>';
+    const loading = document.getElementById('tables-loading');
+    if (loading) loading.textContent = 'Error cargando tablas';
   }
 }
 
@@ -79,8 +177,8 @@ form.addEventListener('submit', async (e) => {
   if (!email || !password) return showMessage('Email y contraseña son obligatorios', 'error');
   if (password !== passwordConfirm) return showMessage('Las contraseñas no coinciden', 'error');
 
-  // Build access object
-  const boxes = tablesContainer.querySelectorAll('input[type=checkbox][data-table]');
+  // Build access object from both columns
+  const boxes = document.querySelectorAll('#tables-grid input[type=checkbox][data-table]');
   const accessTables = {};
   boxes.forEach(cb => {
     const t = cb.dataset.table;
@@ -127,9 +225,29 @@ form.addEventListener('submit', async (e) => {
   }
 });
 
-// Inicializar UI
-document.addEventListener('DOMContentLoaded', () => {
-  renderTables();
-});
+// Inicializar UI inmediatamente cuando el módulo se importa (el HTML ya fue insertado por loadModule)
+// Usamos llamada directa porque DOMContentLoaded ya ocurrió cuando se importan módulos dinámicamente.
+renderTables();
+
+// Toggle show/hide passwords
+try {
+  const toggleBtn = document.getElementById('toggle-password-visibility');
+  const eyeImg = document.getElementById('eye-icon');
+  if (toggleBtn && eyeImg) {
+    toggleBtn.addEventListener('click', () => {
+      const p1 = document.getElementById('admin-register-password');
+      const p2 = document.getElementById('admin-register-password-confirm');
+      if (!p1 || !p2) return;
+      const show = p1.type === 'password';
+      p1.type = show ? 'text' : 'password';
+      p2.type = show ? 'text' : 'password';
+      // Swap icon
+      eyeImg.src = show ? '/ojoAbierto.png' : '/ojoCerrado.png';
+      toggleBtn.setAttribute('aria-pressed', show ? 'true' : 'false');
+    });
+  }
+} catch (err) {
+  console.warn('No se pudo inicializar toggle de contraseñas', err);
+}
 
 export default {};

@@ -12,6 +12,7 @@ export const MENUS = {
     'visualizar_datos',
     'generar_graficos',
     'geomapa',
+    'buscar_caso',
     'editar_caso',
     'inserciones'
   ],

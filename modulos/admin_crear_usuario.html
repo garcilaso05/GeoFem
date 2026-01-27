@@ -2,29 +2,51 @@
   <h2>Crear usuario (Administradores)</h2>
   <div id="admin-create-message"></div>
   <form id="admin-create-form">
-    <div>
-      <label for="admin-register-email">Email</label>
-      <input type="email" id="admin-register-email" required>
+    <div style="margin-bottom:12px; font-size:13px; color:#444;">
+      Introduce la contraseña que usarás para invitar a la persona al programa. Por defecto se sugiere <strong>GeoFemURV</strong>, puedes cambiarla antes de crear la cuenta.
     </div>
-    <div>
+
+    <div class="form-group">
+      <label for="admin-register-email">Correo</label>
+      <input type="email" id="admin-register-email" required placeholder="correo@ejemplo.com">
+    </div>
+
+    <div class="form-group" style="position:relative;">
       <label for="admin-register-password">Contraseña</label>
-      <input type="password" id="admin-register-password" required minlength="6">
+      <input type="password" id="admin-register-password" required minlength="6" value="GeoFemURV" style="padding-right:40px;">
+      <button type="button" id="toggle-password-visibility" aria-label="Mostrar contraseña" class="icon-btn" style="position:absolute; right:8px; top:36px; background:transparent; border:none; padding:4px;">
+        <img id="eye-icon" src="/ojoCerrado.png" alt="Mostrar" style="width:22px; height:22px;">
+      </button>
     </div>
-    <div>
-      <label for="admin-register-password-confirm">Confirmar Contraseña</label>
-      <input type="password" id="admin-register-password-confirm" required minlength="6">
+
+    <div class="form-group" style="position:relative;">
+      <label for="admin-register-password-confirm">Repetir contraseña</label>
+      <input type="password" id="admin-register-password-confirm" required minlength="6" value="GeoFemURV" style="padding-right:40px;">
     </div>
 
     <fieldset style="margin-top:12px;">
       <legend>Permisos por tabla</legend>
       <div id="tables-checkboxes">
-        <!-- Checkboxes de tablas se renderizan aquí -->
         <div id="tables-loading">Cargando tablas...</div>
       </div>
-      <div style="margin-top:8px;">
+      <!-- Grid: dos columnas (Madres / Huérfanos) -->
+      <div class="admin-tables-grid" id="tables-grid" style="display:none;">
+        <div class="table-column">
+          <h4>Tablas Madres <span class="select-all" id="select-all-mdr">(Marcar todo)</span></h4>
+          <div id="tables-mdr-list"></div>
+        </div>
+        <div class="table-column">
+          <h4>Tablas Huérfanos <span class="select-all" id="select-all-hrf">(Marcar todo)</span></h4>
+          <div id="tables-hrf-list"></div>
+        </div>
+      </div>
+      <div style="margin-top:6px; font-size:12px; color:#555;">Nota: las tablas <strong>madre</strong> y <strong>huerfano</strong> siempre quedan marcadas y no se pueden desmarcar.</div>
+
+      <div style="margin-top:12px;">
         <label>
-          <input type="checkbox" id="insercionesPermitidas"> Inserciones permitidas
+          <input type="checkbox" id="insercionesPermitidas"> Permitir editar (Inserciones permitidas)
         </label>
+        <div class="inserciones-note">Nota: permitir editar solo afecta a las tablas seleccionadas arriba; no otorga permisos administrativos.</div>
       </div>
     </fieldset>
 

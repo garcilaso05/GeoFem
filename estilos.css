@@ -740,6 +740,119 @@ body {
   color: #ff6b7a !important;
 }
 
+/* Botón para entrar en modo colaborador (editor) */
+.nav-collab {
+  margin-top: auto;
+  background: rgba(40, 167, 69, 0.10) !important; /* suave verde */
+  border-left-color: #28a745 !important;
+  color: #eaffef !important;
+}
+
+.nav-collab:hover {
+  background: rgba(40, 167, 69, 0.18) !important;
+  color: #b8ffcc !important;
+}
+
+/* Admin crear usuario: tablas grid */
+.admin-tables-grid {
+  display: flex;
+  gap: 16px;
+  margin-top: 8px;
+}
+.table-column {
+  flex: 1;
+  background: rgba(0,0,0,0.03);
+  padding: 12px;
+  border-radius: 8px;
+}
+.table-column h4 {
+  margin: 0 0 8px 0;
+  font-size: 14px;
+}
+.table-column .select-all {
+  display: inline-block;
+  margin-bottom: 8px;
+  font-size: 13px;
+  color: #444;
+  cursor: pointer;
+  text-decoration: underline;
+}
+.table-item { display:flex; align-items:center; gap:8px; margin-bottom:6px; }
+.table-item input[type=checkbox][disabled] + span { opacity: 0.6; font-style:italic; }
+
+.inserciones-note { font-size: 12px; color: #555; margin-top:8px; }
+
+/* Admin create user form styles */
+.admin-create .form-group {
+  margin-bottom: 12px;
+}
+.admin-create .form-group label {
+  display: block;
+  margin-bottom: 6px;
+  font-weight: 600;
+  color: #333;
+}
+.admin-create .form-group input[type=email],
+.admin-create .form-group input[type=password] {
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid #ddd;
+  box-sizing: border-box;
+  transition: all 0.15s ease;
+}
+.admin-create .form-group input[type=email]:focus,
+.admin-create .form-group input[type=password]:focus {
+  outline: none;
+  border-color: #667eea;
+  box-shadow: 0 4px 14px rgba(102,126,234,0.08);
+}
+.icon-btn img { vertical-align: middle; }
+
+/* Small square icon button for password visibility */
+.icon-btn {
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  border-radius: 8px;
+  background: rgba(0,0,0,0.04);
+  border: 1px solid rgba(0,0,0,0.06);
+  cursor: pointer;
+}
+.icon-btn img { width: 20px; height: 20px; }
+
+/* Asegurar que los botones icono dentro de .form-group no hereden width:100% */
+.form-group button.icon-btn,
+.form-group .icon-btn,
+#toggle-password-visibility {
+  width: 34px; /* fijo: cuadrado */
+  height: 34px;
+  max-width: 34px;
+  padding: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+}
+
+/* Login tab title styling: bigger text, transparent background */
+.tab-title {
+  font-size: 1.6rem;
+  font-weight: 700;
+  padding: 6px 10px;
+  background: transparent !important;
+  color: #280743;
+}
+
+/* Reduce visual weight of .tabs container but keep rounded corners */
+.tabs {
+  background: transparent;
+  padding: 0 6px 18px 6px;
+}
+
 /* Iconos en los botones del navbar */
 .nav-icon {
   width: 18px;

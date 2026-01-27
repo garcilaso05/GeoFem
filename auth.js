@@ -31,6 +31,13 @@ window.addEventListener('message', (evt) => {
       window._collaboratorEditing = true;
       // Actualizar la navegación para mostrar solo lo permitido
       updateNavForCurrentRole();
+      // Ocultar el botón de "Entrar como Colaborador" una vez que está en modo editor
+      try {
+        const btn = document.getElementById('enter-collab-btn');
+        if (btn) btn.style.display = 'none';
+      } catch (e) {
+        /* no-op */
+      }
     }
   } catch (err) {
     console.error('Error manejando message event:', err);
@@ -362,13 +369,20 @@ async function showUserApp(user, userEmail, isCollaboratorAvailable = false) {
         btn = document.createElement('button');
         btn.id = 'enter-collab-btn';
         btn.textContent = 'Entrar como Colaborador';
-        btn.className = 'nav-collab-btn';
-        btn.style.margin = '12px';
+        // Use the new nav-collab class so it matches sidebar buttons and has vivid color
+        btn.className = 'nav-collab';
+        // No extra margin; align with other buttons
+        btn.style.margin = '0';
         btn.addEventListener('click', () => {
           window.open('modulos/collab_login.html', 'collab_login', 'width=420,height=540');
         });
         const nav = document.getElementById('app-nav');
-        if (nav) nav.appendChild(btn);
+        const logoutButton = document.getElementById('app-logout-btn');
+        if (nav) {
+          // Insert the button immediately before the logout button so it appears above it
+          if (logoutButton) nav.insertBefore(btn, logoutButton);
+          else nav.appendChild(btn);
+        }
       } else {
         btn.style.display = '';
       }
