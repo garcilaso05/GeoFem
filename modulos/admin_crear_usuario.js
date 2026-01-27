@@ -1,181 +1,135 @@
-import { auth, db } from '../firebase-config.js';
-import { createUserWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-import { doc, setDoc, collection, addDoc, writeBatch, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
-import { formatDisplayName } from './seguridad.js';
+import { FIREBASE_API_KEY, db } from '../firebase-config.js';
+import { writeBatch, doc, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { initializeDatabaseCache, getTables } from './database-cache.js';
 
-function showMessage(msg, type = 'error') {
-  const c = document.getElementById('admin-create-message');
-  if (!c) return;
-  c.innerHTML = `<div class="message ${type}">${msg}</div>`;
-  setTimeout(() => { c.innerHTML = ''; }, 5000);
-}
-
-async function ensureDbCacheReady(timeout = 10000) {
-  if (window.dbCache && window.dbCache.isCacheReady && window.dbCache.isCacheReady()) return true;
-  if (window.dbCache && window.dbCache.waitForCache) {
-    return await window.dbCache.waitForCache(timeout);
-  }
-  // No existe dbCache: return false
-  return false;
-}
-
-function renderTableCheckboxes(tables) {
-  const container = document.getElementById('tables-checkboxes');
-  if (!container) return;
-  container.innerHTML = '';
-
-  if (!tables || tables.length === 0) {
-    container.innerHTML = '<div>No hay tablas disponibles</div>';
-    return;
-  }
-
-  // Orden alfabético
-  tables.sort();
-
-  tables.forEach(tbl => {
-    const id = `perm_${tbl}`;
-    const wrapper = document.createElement('div');
-    const label = document.createElement('label');
-    const cb = document.createElement('input');
-    cb.type = 'checkbox';
-    cb.id = id;
-    cb.name = tbl; // usar el nombre de tabla como key
-
-    // Usar nombre legible para mostrar
-    let display = tbl;
-    try {
-      display = formatDisplayName(tbl) || tbl;
-    } catch (err) {
-      console.warn('formatDisplayName fallo para', tbl, err);
-    }
-
-    label.appendChild(cb);
-    label.appendChild(document.createTextNode(' ' + display));
-    wrapper.appendChild(label);
-    container.appendChild(wrapper);
-  });
-}
-
-async function loadAndRenderTables() {
-  const ok = await ensureDbCacheReady(10000);
-  const container = document.getElementById('tables-checkboxes');
-  if (!container) return;
-
-  if (!ok) {
-    container.innerHTML = '<div>No se pudo cargar la lista de tablas (cache no disponible)</div>';
-    return;
-  }
-
-  // Obtener tablas de ambos schemas
-  try {
-    const mdr = window.dbCache.getTables('mdr') || [];
-    const hrf = window.dbCache.getTables('hrf') || [];
-    const all = Array.from(new Set([...mdr, ...hrf]));
-    renderTableCheckboxes(all);
-  } catch (err) {
-    console.error('Error obteniendo tablas desde dbCache:', err);
-    container.innerHTML = '<div>Error cargando tablas</div>';
-  }
-}
-
-// Handler del formulario: reproduce exactamente la lógica de alta existente en auth.js
 const form = document.getElementById('admin-create-form');
-if (form) {
-  // Cargar tablas cuando el módulo se inicialice
-  loadAndRenderTables();
+const messageContainer = document.getElementById('admin-create-message');
+const tablesContainer = document.getElementById('tables-checkboxes');
 
-  form.addEventListener('submit', async (e) => {
-    e.preventDefault();
+function showMessage(msg, type = 'info') {
+  if (!messageContainer) return;
+  messageContainer.innerHTML = `<div class="message ${type}">${msg}</div>`;
+  setTimeout(() => { messageContainer.innerHTML = ''; }, 5000);
+}
 
-    const email = document.getElementById('admin-register-email').value;
-    const password = document.getElementById('admin-register-password').value;
-    const confirmPassword = document.getElementById('admin-register-password-confirm').value;
+async function renderTables() {
+  try {
+    tablesContainer.innerHTML = '<div id="tables-loading">Cargando tablas...</div>';
+    await initializeDatabaseCache();
 
-    if (password !== confirmPassword) {
-      showMessage('Las contraseñas no coinciden');
+    const schemas = ['mdr', 'hrf'];
+    const allTables = [];
+    schemas.forEach(s => {
+      const list = getTables(s) || [];
+      list.forEach(t => allTables.push(t));
+    });
+
+    // Deduplicate
+    const unique = Array.from(new Set(allTables)).sort();
+
+    if (unique.length === 0) {
+      tablesContainer.innerHTML = '<div>No se encontraron tablas</div>';
       return;
     }
 
-    try {
-      // 1) Crear usuario en Firebase Auth
-      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-      const user = userCredential.user;
-      const uid = user.uid;
+    tablesContainer.innerHTML = '';
+    unique.forEach(tbl => {
+      const id = `table-${tbl}`;
+      const wrapper = document.createElement('div');
+      wrapper.innerHTML = `
+        <label style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
+          <input type="checkbox" id="${id}" data-table="${tbl}" checked>
+          <span>${tbl}</span>
+        </label>
+      `;
+      tablesContainer.appendChild(wrapper);
+    });
 
-      // 2) Preparar batch: crear /users/{uid} y /users/{uid}/priv/data
-      const batch = writeBatch(db);
-
-      const userDocRef = doc(db, 'users', uid);
-      batch.set(userDocRef, {
-        _id: uid,
-        email: user.email,
-        createdAt: serverTimestamp()
-      });
-
-      const privDocRef = doc(db, 'users', uid, 'priv', 'data');
-      // Role determined at creation time: if insercionesPermitidas === true -> COLABORADOR
-      const insercionesCb = document.getElementById('insercionesPermitidas');
-      const insercionesValue = !!(insercionesCb && insercionesCb.checked);
-      const assignedRole = insercionesValue ? 'COLABORADOR' : 'USER';
-      batch.set(privDocRef, {
-        role: assignedRole
-      });
-
-      // 3) Preparar documento de access/tables con booleans de checkboxes
-      const tableCheckboxes = Array.from(document.querySelectorAll('#tables-checkboxes input[type=checkbox]'));
-      const accessDoc = {};
-      tableCheckboxes.forEach(cb => {
-        const key = cb.name || cb.id.replace(/^perm_/, '');
-        accessDoc[key] = !!cb.checked;
-      });
-
-  // Añadir insercionesPermitidas (es parte del documento de access, pero NO participa en filtrado)
-  accessDoc['insercionesPermitidas'] = insercionesValue;
-
-      const accessDocRef = doc(db, 'users', uid, 'access', 'tables');
-      batch.set(accessDocRef, accessDoc);
-
-      // 4) Commit del batch
-      await batch.commit();
-
-      // 5) Crear logs (separado, como en la lógica original)
-      const logsRef = collection(db, 'users', uid, 'logs');
-      await addDoc(logsRef, {
-        registro_timestamp: serverTimestamp()
-      });
-
-      // 6) Crear documento de favoritos para gráficos (mantener la misma estructura que original)
-      const favoritesDocRef = doc(db, 'users', uid, 'favorites', 'graficos');
-      await setDoc(favoritesDocRef, {
-        TipoGrafico1: null,
-        TablaGrafico1: null,
-        CampoGrafico1: null,
-        TipoGrafico2: null,
-        TablaGrafico2: null,
-        CampoGrafico2: null,
-        TipoGrafico3: null,
-        TablaGrafico3: null,
-        CampoGrafico3: null
-      });
-
-      showMessage('Usuario creado correctamente', 'success');
-      form.reset();
-      // Volver a renderizar tablas en caso de que algo haya cambiado
-      loadAndRenderTables();
-
-    } catch (error) {
-      console.error('Error creando usuario (admin flow):', error);
-      let errorMessage = 'Error al registrar usuario';
-      if (error.code === 'auth/email-already-in-use') {
-        errorMessage = 'El email ya está registrado';
-      } else if (error.code === 'auth/weak-password') {
-        errorMessage = 'La contraseña debe tener al menos 6 caracteres';
-      } else if (error.code === 'auth/invalid-email') {
-        errorMessage = 'Email inválido';
-      }
-      showMessage(errorMessage);
-    }
-  });
-} else {
-  console.log('admin_crear_usuario: no se encontró el formulario');
+  } catch (err) {
+    console.error('Error cargando tablas para admin:', err);
+    tablesContainer.innerHTML = '<div>Error cargando tablas</div>';
+  }
 }
+
+async function createUserAccount(email, password) {
+  // Use the Identity Toolkit REST API (creates user without changing current client auth)
+  const url = `https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=${FIREBASE_API_KEY}`;
+  const body = { email, password, returnSecureToken: true };
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    const msg = data && data.error && data.error.message ? data.error.message : 'Error creando cuenta';
+    throw new Error(msg);
+  }
+  // localId is the uid
+  return data.localId;
+}
+
+form.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const email = document.getElementById('admin-register-email').value.trim();
+  const password = document.getElementById('admin-register-password').value;
+  const passwordConfirm = document.getElementById('admin-register-password-confirm').value;
+  const inserciones = !!document.getElementById('insercionesPermitidas').checked;
+
+  if (!email || !password) return showMessage('Email y contraseña son obligatorios', 'error');
+  if (password !== passwordConfirm) return showMessage('Las contraseñas no coinciden', 'error');
+
+  // Build access object
+  const boxes = tablesContainer.querySelectorAll('input[type=checkbox][data-table]');
+  const accessTables = {};
+  boxes.forEach(cb => {
+    const t = cb.dataset.table;
+    accessTables[t] = !!cb.checked;
+  });
+  // insercionesPermitidas is stored but the accessInterceptor must NOT read it
+  accessTables['insercionesPermitidas'] = inserciones;
+
+  // Decide role according to spec (single decision here)
+  const role = inserciones === true ? 'COLABORADOR' : 'USER';
+
+  try {
+    showMessage('Creando cuenta...', 'info');
+
+    // 1) Create Firebase Auth user via REST (does not affect current auth state)
+    const uid = await createUserAccount(email, password);
+
+    // 2) Write Firestore docs in a single batch
+    const batch = writeBatch(db);
+    const userRef = doc(db, 'users', uid);
+    const privRef = doc(db, 'users', uid, 'priv', 'data');
+    const accessRef = doc(db, 'users', uid, 'access', 'tables');
+
+    batch.set(userRef, {
+      _id: uid,
+      email: email,
+      createdAt: serverTimestamp()
+    });
+
+    batch.set(privRef, {
+      role: role
+    });
+
+    batch.set(accessRef, accessTables);
+
+    await batch.commit();
+
+    showMessage('Usuario creado correctamente', 'success');
+    form.reset();
+    await renderTables();
+  } catch (err) {
+    console.error('Error creando usuario (admin):', err);
+    showMessage('Error creando usuario: ' + (err.message || err), 'error');
+  }
+});
+
+// Inicializar UI
+document.addEventListener('DOMContentLoaded', () => {
+  renderTables();
+});
+
+export default {};

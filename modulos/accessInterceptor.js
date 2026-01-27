@@ -1,18 +1,21 @@
 import { db } from '../firebase-config.js';
 import { doc, getDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
-// accessInterceptor: responsibility single
-// - leer /users/{uid}/access/tables una vez
-// - guardar en window.sessionAccess
-// - eliminar de la caché/memoria solo las tablas con valor === false
-// NO debe leer role ni usar insercionesPermitidas para tomar decisiones
+/**
+ * accessInterceptor.js
+ * - Leer /users/{uid}/access/tables una sola vez
+ * - Guardar en memoria de sesión (window.sessionAccess)
+ * - Eliminar de caché/memoria SOLO las tablas con valor === false
+ *
+ * RESTRICCIONES: no leer role, no leer insercionesPermitidas, no asumir valores por defecto.
+ */
 export async function applyAccessRestrictions(user) {
   try {
     if (!user || !user.uid) return;
 
-    // Evitar múltiples lecturas si ya cargado
+    // Evitar múltiples lecturas si ya cargado para este uid
     if (window.sessionAccess && window.sessionAccess._loadedForUid === user.uid) {
-      console.log('accessInterceptor: permisos ya cargados para', user.uid);
+      console.log('accessInterceptor: permisos ya cargados en esta sesión');
       return;
     }
 
@@ -20,39 +23,45 @@ export async function applyAccessRestrictions(user) {
     const accessSnap = await getDoc(accessRef);
     const accessData = accessSnap.exists() ? accessSnap.data() : {};
 
-    // Guardar lo leído en memoria de sesión. Incluir uid cargado para evitar relecturas.
-    window.sessionAccess = Object.assign({}, accessData, { _loadedForUid: user.uid });
+    // Construir conjunto de tablas DENEGADAS explícitamente (valor === false)
+    const denied = new Set();
+    Object.keys(accessData).forEach(key => {
+      // Nunca considerar la clave insercionesPermitidas en el filtrado
+      if (key === 'insercionesPermitidas') return;
+      const val = accessData[key];
+      if (val === false) {
+        denied.add(key);
+      }
+    });
 
-    console.log('accessInterceptor: permisos cargados en memoria', window.sessionAccess);
+    // Guardar solo lo necesario en memoria de sesión
+    window.sessionAccess = {
+      _loadedForUid: user.uid,
+      denied: Array.from(denied)
+    };
 
-    // Filtrar copia en sessionStorage: solo borrar tablas con valor === false
+    console.log('accessInterceptor: permisos cargados (solo denied):', window.sessionAccess);
+
+    // Filtrar sessionStorage cache si existe
     try {
       const key = 'geofem_db_cache';
       const raw = sessionStorage.getItem(key);
       if (raw) {
         const parsed = JSON.parse(raw);
+        // Filtrar tablas por schema: eliminar las tablas explícitamente denegadas
         if (parsed.tables) {
           Object.keys(parsed.tables).forEach(schema => {
             const arr = parsed.tables[schema] || [];
-            parsed.tables[schema] = arr.filter(tbl => {
-              // Si la entrada existe y es false => eliminar
-              if (Object.prototype.hasOwnProperty.call(accessData, tbl)) {
-                return accessData[tbl] !== false;
-              }
-              // Si no existe => mantener
-              return true;
-            });
+            parsed.tables[schema] = arr.filter(tbl => !denied.has(tbl));
           });
         }
-
+        // Filtrar tableColumns
         if (parsed.tableColumns) {
           Object.keys(parsed.tableColumns).forEach(schema => {
             const obj = parsed.tableColumns[schema] || {};
             const filteredObj = {};
             Object.keys(obj).forEach(tbl => {
-              if (Object.prototype.hasOwnProperty.call(accessData, tbl)) {
-                if (accessData[tbl] !== false) filteredObj[tbl] = obj[tbl];
-              } else {
+              if (!denied.has(tbl)) {
                 filteredObj[tbl] = obj[tbl];
               }
             });
@@ -61,19 +70,19 @@ export async function applyAccessRestrictions(user) {
         }
 
         sessionStorage.setItem(key, JSON.stringify(parsed));
-        console.log('accessInterceptor: sessionStorage filtrado (solo tablas explicitamente false eliminadas)');
+        console.log('accessInterceptor: sessionStorage cache filtrada');
       }
     } catch (err) {
       console.error('accessInterceptor: error filtrando sessionStorage', err);
     }
 
-    // Si no existe dbCache no se puede reemplazar funciones; salir con estado guardado en memoria
+    // Si no existe window.dbCache, no intentamos sobrescribir funciones
     if (!window.dbCache) {
-      console.warn('accessInterceptor: window.dbCache no disponible; solo se aplicó filtro a sessionStorage');
+      console.warn('accessInterceptor: window.dbCache no disponible, solo filtrado de sessionStorage aplicado');
       return;
     }
 
-    // Guardar originales si no existen
+    // Guardar originales
     if (!window.dbCache._origGetTables) {
       window.dbCache._origGetTables = window.dbCache.getTables.bind(window.dbCache);
     }
@@ -81,30 +90,22 @@ export async function applyAccessRestrictions(user) {
       window.dbCache._origGetTableColumns = window.dbCache.getTableColumns.bind(window.dbCache);
     }
 
-    // Reemplazar getTables: eliminar solo tablas con valor === false
+    // Reemplazar getTables: eliminar tablas explícitamente denegadas
     window.dbCache.getTables = function(schema) {
       const orig = window.dbCache._origGetTables(schema) || [];
-      const filtered = orig.filter(tbl => {
-        if (Object.prototype.hasOwnProperty.call(accessData, tbl)) {
-          return accessData[tbl] !== false;
-        }
-        return true; // ausente => visible
-      });
-      return filtered;
+      return orig.filter(tbl => !denied.has(tbl));
     };
 
-    // Reemplazar getTableColumns: si tabla existe y es false -> devolver []
+    // Reemplazar getTableColumns: devolver vacío para tablas denegadas
     window.dbCache.getTableColumns = function(schema, tabla) {
-      if (Object.prototype.hasOwnProperty.call(accessData, tabla) && accessData[tabla] === false) {
-        return [];
-      }
+      if (denied.has(tabla)) return [];
       return window.dbCache._origGetTableColumns(schema, tabla) || [];
     };
 
-    console.log('accessInterceptor: interceptores aplicados en dbCache');
+    console.log('accessInterceptor: interceptors aplicados (dbCache)');
 
   } catch (error) {
-    console.error('accessInterceptor: error cargando permisos', error);
+    console.error('accessInterceptor: error aplicando restricciones', error);
   }
 }
 

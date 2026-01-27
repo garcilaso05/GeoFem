@@ -1,19 +1,23 @@
-// Menús permitidos por rol
+/**
+ * menus.config.js
+ * Define menús permitidos por rol. Solo describe los módulos exactos que
+ * debe mostrar un COLABORADOR en modo editor.
+ */
 export const MENUS = {
-  USER: [
-    'visualizar_datos',
-    'generar_graficos',
-    'geomapa'
-  ],
+  // ADMIN: sin cambios (tiene acceso total a los botones admin-only)
+  ADMIN: 'ALL',
+
+  // COLABORADOR (modo editor) -> exactamente estos módulos
   COLABORADOR: [
-    // EXACTAMENTE estos módulos para modo colaborador (editor)
     'visualizar_datos',
     'generar_graficos',
     'geomapa',
     'editar_caso',
     'inserciones'
   ],
-  ADMIN: 'ALL'
+
+  // USER: comportamiento por defecto (no incluimos lista aquí)
+  USER: null
 };
 
 export default { MENUS };

@@ -14,12 +14,78 @@ import {
   serverTimestamp, 
   getDoc 
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { getUserRole } from './modulos/roles.js';
+import { MENUS } from './modulos/menus.config.js';
 
 // In-memory session access permissions (not persisted)
 window.sessionAccess = window.sessionAccess || null;
-import { applyAccessRestrictions } from './modulos/accessInterceptor.js';
-import { getRole } from './modulos/roles.js';
-import { MENUS } from './modulos/menus.config.js';
+
+// Manejo de mensajes desde ventanas emergentes (colaborador)
+window._collaboratorEditing = false;
+window.addEventListener('message', (evt) => {
+  try {
+    const data = evt.data || {};
+    if (data.type === 'collab-auth-success') {
+      console.log('Mensaje recibido: collab-auth-success', data);
+      // Marcar que el colaborador entró en modo editor
+      window._collaboratorEditing = true;
+      // Actualizar la navegación para mostrar solo lo permitido
+      updateNavForCurrentRole();
+    }
+  } catch (err) {
+    console.error('Error manejando message event:', err);
+  }
+});
+
+/**
+ * Actualizar navegación según rol y modo editor colaborador
+ * - Para ADMIN: dejar todo como está (admin-only mostrados)
+ * - Para USER: ocultar admin-only
+ * - Para COLABORADOR en modo lector: se comporta como USER
+ * - Para COLABORADOR en modo editor (window._collaboratorEditing === true):
+ *   mostrar solo los módulos exactos definidos en MENUS.COLABORADOR
+ */
+function updateNavForCurrentRole() {
+  const role = window._currentUserRole;
+  const navButtons = document.querySelectorAll('#app-nav button');
+
+  // ADMIN: mostrar todo (respeta .admin-only)
+  if (role === 'ADMIN') {
+    navButtons.forEach(btn => { btn.style.display = ''; });
+    return;
+  }
+
+  // Si colaborador en modo editor -> mostrar solo los módulos listados
+  if (role === 'COLABORADOR' && window._collaboratorEditing === true) {
+    const allowed = new Set(MENUS.COLABORADOR || []);
+    navButtons.forEach(btn => {
+      const onclick = btn.getAttribute('onclick') || '';
+      const match = onclick.match(/loadModule\('([^']+)'\)/);
+      if (match) {
+        const moduleName = match[1];
+        if (allowed.has(moduleName)) {
+          btn.style.display = '';
+        } else {
+          btn.style.display = 'none';
+        }
+      } else {
+        // Buttons without loadModule (logout, etc.) keep visible
+        // But ensure admin-only are hidden
+        if (btn.classList.contains('admin-only')) btn.style.display = 'none';
+      }
+    });
+    return;
+  }
+
+  // Default: USER or COLABORADOR in reader mode -> hide admin-only buttons
+  navButtons.forEach(btn => {
+    if (btn.classList.contains('admin-only')) {
+      btn.style.display = 'none';
+    } else {
+      btn.style.display = '';
+    }
+  });
+}
 
 // Credenciales de Supabase
 const SUPABASE_PUBLIC = {
@@ -242,14 +308,16 @@ window.getCurrentSchema = function() {
 };
 
 // Función para mostrar la aplicación para usuarios USER
-async function showUserApp(user, userEmail, role = 'USER') {
-  console.log('showUserApp llamada para:', userEmail, 'role:', role);
+// isCollaboratorAvailable: true si el usuario tiene role === 'COLABORADOR' (modo lector)
+async function showUserApp(user, userEmail, isCollaboratorAvailable = false) {
+  console.log('showUserApp llamada para:', userEmail);
 
   authView.classList.add('hidden');
   userView.classList.add('hidden');
   appView.classList.remove('hidden');
 
-  window._currentUserRole = role;
+  // En modo lector (USER o COLABORADOR lector) se marca rol USER en la UI
+  window._currentUserRole = 'USER';
 
   const emailElement = document.getElementById('app-user-email');
   if (emailElement) {
@@ -262,8 +330,11 @@ async function showUserApp(user, userEmail, role = 'USER') {
     schemaSelector.value = window._currentSchema;
   }
 
+  // Ocultar botones admin por defecto (USER behavior)
   const adminButtons = document.querySelectorAll('#app-nav .admin-only');
-  adminButtons.forEach(btn => { btn.style.display = 'none'; });
+  adminButtons.forEach(btn => {
+    btn.style.display = 'none';
+  });
 
   // Inicializar caché de base de datos
   console.log('🚀 Inicializando caché de base de datos...');
@@ -275,34 +346,38 @@ async function showUserApp(user, userEmail, role = 'USER') {
     console.error('❌ Error inicializando caché:', error);
   }
 
-  // Aplicar restricciones de acceso según permisos (se invoca para USER y COLABORADOR lector)
+  // Aplicar restricciones de acceso según permisos (solo para NON-ADMIN)
   try {
+    const { applyAccessRestrictions } = await import('./modulos/accessInterceptor.js');
     await applyAccessRestrictions(user);
   } catch (err) {
     console.error('Error aplicando restricciones de acceso:', err);
   }
 
-  // Si el rol es COLABORADOR, mostrar botón para 'Entrar como Colaborador' (modo editor)
-  // No iniciar el flujo de Supabase aquí: solo abrir popup cuando el usuario lo quiera.
+  // Si el usuario es COLABORADOR, mostrar botón que abre ventana para entrar como editor
   try {
-    const existing = document.getElementById('enter-collab-btn');
-    if (existing) existing.remove();
-
-    if (role === 'COLABORADOR') {
-      const container = document.getElementById('app-user-controls') || emailElement || document.body;
-      const btn = document.createElement('button');
-      btn.id = 'enter-collab-btn';
-  btn.textContent = 'Entrar como Colaborador';
-      btn.className = 'secondary';
-      btn.addEventListener('click', () => {
-        // Abrir ventana separada para autenticación de colaborador (Supabase)
-        const popup = window.open('modulos/collab_login.html', 'colab_login', 'width=500,height=700');
-        // El popup hará postMessage al opener con { type: 'collab-auth-success', email }
-      });
-      container.insertAdjacentElement('afterend', btn);
+    if (isCollaboratorAvailable) {
+      let btn = document.getElementById('enter-collab-btn');
+      if (!btn) {
+        btn = document.createElement('button');
+        btn.id = 'enter-collab-btn';
+        btn.textContent = 'Entrar como Colaborador';
+        btn.className = 'nav-collab-btn';
+        btn.style.margin = '12px';
+        btn.addEventListener('click', () => {
+          window.open('modulos/collab_login.html', 'collab_login', 'width=420,height=540');
+        });
+        const nav = document.getElementById('app-nav');
+        if (nav) nav.appendChild(btn);
+      } else {
+        btn.style.display = '';
+      }
+    } else {
+      const existing = document.getElementById('enter-collab-btn');
+      if (existing) existing.style.display = 'none';
     }
   } catch (err) {
-    console.error('Error mostrando boton Entrar como Colaborador:', err);
+    console.error('Error mostrando botón colaborador:', err);
   }
 
   setTimeout(() => {
@@ -313,44 +388,11 @@ async function showUserApp(user, userEmail, role = 'USER') {
     }
   }, 100);
 
+  // Asegurar que la navegación refleja si el colaborador entró en modo editor
+  updateNavForCurrentRole();
+
   console.log('App de usuario mostrada correctamente');
 }
-
-// Listener global para mensajes desde la ventana de colaborador (popup)
-window.addEventListener('message', (e) => {
-  try {
-    const data = e.data || {};
-    if (data && data.type === 'collab-auth-success') {
-      console.log('Mensaje: collab-auth-success desde popup', data.email);
-      // Marcar que el usuario entró explícitamente como editor colaborador
-      window._isCollaboratorEditor = true;
-      // Marcar credencial de supabase autenticada para distinguir ADMIN-Supabase flow
-      window._supabaseAuthCreds = { authenticated: true, userEmail: data.email, collab: true };
-
-      // Aplicar menú restringido a EXACTAMENTE los módulos permitidos para COLABORADOR
-      try {
-        const allowed = Array.isArray(MENUS.COLABORADOR) ? MENUS.COLABORADOR : [];
-        document.querySelectorAll('#app-nav button').forEach(btn => {
-          const onclick = btn.getAttribute('onclick') || '';
-          const m = onclick.match(/loadModule\(['"]([^'\"]+)['"]\)/);
-          const moduleName = m ? m[1] : null;
-          if (!moduleName) return;
-          if (allowed.indexOf(moduleName) === -1) {
-            btn.style.display = 'none';
-          } else {
-            btn.style.display = 'flex';
-          }
-        });
-      } catch (err) {
-        console.error('Error aplicando menus de colaborador:', err);
-      }
-
-      showMessage('Modo colaborador: editor activado', 'success');
-    }
-  } catch (err) {
-    console.error('Error procesando message desde popup:', err);
-  }
-});
 
 // Función para mostrar la aplicación para administradores ADMIN
 async function showAdminApp(user, userEmail) {
@@ -509,12 +551,19 @@ onAuthStateChanged(auth, async (user) => {
     authStateProcessed = true;
     
     try {
-      const role = await getRole(user.uid);
+      // Delegar lectura de rol a modulos/roles.js
+      const role = await getUserRole(user.uid);
       console.log('Rol obtenido:', role);
 
-      if (role === 'USER' || role === 'COLABORADOR') {
-        console.log('Mostrando app como', role);
-        showUserApp(user, user.email, role);
+      if (role === 'USER') {
+        console.log('Mostrando app como USER');
+        await showUserApp(user, user.email, false);
+      } else if (role === 'COLABORADOR') {
+        console.log('Mostrando app como COLABORADOR (modo lector)');
+        // Mostrar la app en modo lector, pero habilitar el botón para entrar como editor
+        await showUserApp(user, user.email, true);
+        // Dejar window._currentUserRole como 'USER' (lector) until enters editor mode
+        window._currentUserRole = 'COLABORADOR';
       } else if (role === 'ADMIN') {
         if (window._supabaseAuthCreds) {
           console.log('Admin ya autenticado con Supabase, mostrando app');

@@ -20,3 +20,7 @@ const db = getFirestore(app);
 const analytics = getAnalytics(app);
 
 export { auth, db, analytics };
+// Expose API key for safe client-side operations that need to create users
+// NOTE: this is the public API key (not a service account) and it's acceptable
+// to use it for the Identity Toolkit REST API when explicitly required.
+export const FIREBASE_API_KEY = firebaseConfig.apiKey;
