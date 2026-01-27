@@ -1,0 +1,59 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Acceso Colaborador</title>
+    <style>body{font-family:Arial,Helvetica,sans-serif;padding:20px} .message{padding:10px;border-radius:4px;margin-bottom:10px} .error{background:#ffecec;color:#900} .success{background:#e6ffed;color:#070}</style>
+  </head>
+  <body>
+    <h2>Acceso Colaborador</h2>
+    <div id="collab-message"></div>
+    <form id="collab-form">
+      <div>
+        <label for="collab-email">Email</label><br>
+        <input id="collab-email" type="email" required />
+      </div>
+      <div style="margin-top:8px">
+        <label for="collab-pass">Contraseña</label><br>
+        <input id="collab-pass" type="password" required />
+      </div>
+      <div style="margin-top:12px">
+        <button type="submit">Entrar como Colaborador</button>
+      </div>
+    </form>
+
+    <script type="module">
+      import { authenticateCollaborator } from './authSupabase.js';
+
+      const form = document.getElementById('collab-form');
+      const msg = document.getElementById('collab-message');
+
+      function show(msgText, type='error'){
+        msg.innerHTML = `<div class="message ${type}">${msgText}</div>`;
+      }
+
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        show('Autenticando...', 'success');
+        const email = document.getElementById('collab-email').value;
+        const password = document.getElementById('collab-pass').value;
+        try {
+          const res = await authenticateCollaborator(email, password);
+          if (res.success) {
+            // Notificar al opener que la autenticación fue exitosa
+            if (window.opener && !window.opener.closed) {
+              window.opener.postMessage({ type: 'collab-auth-success', email }, '*');
+            }
+            show('Autenticación correcta. Cierra esta ventana o vuelve a la aplicación.', 'success');
+          } else {
+            // Mensaje amigable según especificación
+            show('Credenciales incorrectas. Si el error persiste, es posible que tu acceso de editor todavía se esté procesando.', 'error');
+          }
+        } catch (err) {
+          console.error('collab login error', err);
+          show('Credenciales incorrectas. Si el error persiste, es posible que tu acceso de editor todavía se esté procesando.', 'error');
+        }
+      });
+    </script>
+  </body>
+</html>

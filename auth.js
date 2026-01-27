@@ -15,6 +15,12 @@ import {
   getDoc 
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
+// In-memory session access permissions (not persisted)
+window.sessionAccess = window.sessionAccess || null;
+import { applyAccessRestrictions } from './modulos/accessInterceptor.js';
+import { getRole } from './modulos/roles.js';
+import { MENUS } from './modulos/menus.config.js';
+
 // Credenciales de Supabase
 const SUPABASE_PUBLIC = {
   url: 'https://rroritvsvpabpkjtiskq.supabase.co',
@@ -143,6 +149,8 @@ function showSupabaseAuthForm() {
   });
   
   document.getElementById('cancel-admin-btn').addEventListener('click', () => {
+    // Marcar que el admin ha decidido acceder como usuario para evitar aplicar restricciones
+    window._adminAccessAsUser = true;
     const user = auth.currentUser;
     if (user) {
       showUserApp(user, user.email);
@@ -234,31 +242,29 @@ window.getCurrentSchema = function() {
 };
 
 // Función para mostrar la aplicación para usuarios USER
-async function showUserApp(user, userEmail) {
-  console.log('showUserApp llamada para:', userEmail);
-  
+async function showUserApp(user, userEmail, role = 'USER') {
+  console.log('showUserApp llamada para:', userEmail, 'role:', role);
+
   authView.classList.add('hidden');
   userView.classList.add('hidden');
   appView.classList.remove('hidden');
-  
-  window._currentUserRole = 'USER';
-  
+
+  window._currentUserRole = role;
+
   const emailElement = document.getElementById('app-user-email');
   if (emailElement) {
     emailElement.textContent = userEmail;
   }
-  
+
   // Inicializar el selector de esquema
   const schemaSelector = document.getElementById('schema-selector');
   if (schemaSelector) {
     schemaSelector.value = window._currentSchema;
   }
-  
+
   const adminButtons = document.querySelectorAll('#app-nav .admin-only');
-  adminButtons.forEach(btn => {
-    btn.style.display = 'none';
-  });
-  
+  adminButtons.forEach(btn => { btn.style.display = 'none'; });
+
   // Inicializar caché de base de datos
   console.log('🚀 Inicializando caché de base de datos...');
   try {
@@ -268,7 +274,37 @@ async function showUserApp(user, userEmail) {
   } catch (error) {
     console.error('❌ Error inicializando caché:', error);
   }
-  
+
+  // Aplicar restricciones de acceso según permisos (se invoca para USER y COLABORADOR lector)
+  try {
+    await applyAccessRestrictions(user);
+  } catch (err) {
+    console.error('Error aplicando restricciones de acceso:', err);
+  }
+
+  // Si el rol es COLABORADOR, mostrar botón para 'Entrar como Colaborador' (modo editor)
+  // No iniciar el flujo de Supabase aquí: solo abrir popup cuando el usuario lo quiera.
+  try {
+    const existing = document.getElementById('enter-collab-btn');
+    if (existing) existing.remove();
+
+    if (role === 'COLABORADOR') {
+      const container = document.getElementById('app-user-controls') || emailElement || document.body;
+      const btn = document.createElement('button');
+      btn.id = 'enter-collab-btn';
+      btn.textContent = 'Activar inserciones/modificaciones';
+      btn.className = 'secondary';
+      btn.addEventListener('click', () => {
+        // Abrir ventana separada para autenticación de colaborador (Supabase)
+        const popup = window.open('modulos/collab_login.html', 'colab_login', 'width=500,height=700');
+        // El popup hará postMessage al opener con { type: 'collab-auth-success', email }
+      });
+      container.insertAdjacentElement('afterend', btn);
+    }
+  } catch (err) {
+    console.error('Error mostrando boton Entrar como Colaborador:', err);
+  }
+
   setTimeout(() => {
     const firstButton = document.querySelector('#app-nav button:not(.admin-only)');
     if (firstButton) {
@@ -276,9 +312,45 @@ async function showUserApp(user, userEmail) {
       firstButton.click();
     }
   }, 100);
-  
+
   console.log('App de usuario mostrada correctamente');
 }
+
+// Listener global para mensajes desde la ventana de colaborador (popup)
+window.addEventListener('message', (e) => {
+  try {
+    const data = e.data || {};
+    if (data && data.type === 'collab-auth-success') {
+      console.log('Mensaje: collab-auth-success desde popup', data.email);
+      // Marcar que el usuario entró explícitamente como editor colaborador
+      window._isCollaboratorEditor = true;
+      // Marcar credencial de supabase autenticada para distinguir ADMIN-Supabase flow
+      window._supabaseAuthCreds = { authenticated: true, userEmail: data.email, collab: true };
+
+      // Aplicar menú restringido a EXACTAMENTE los módulos permitidos para COLABORADOR
+      try {
+        const allowed = Array.isArray(MENUS.COLABORADOR) ? MENUS.COLABORADOR : [];
+        document.querySelectorAll('#app-nav button').forEach(btn => {
+          const onclick = btn.getAttribute('onclick') || '';
+          const m = onclick.match(/loadModule\(['"]([^'\"]+)['"]\)/);
+          const moduleName = m ? m[1] : null;
+          if (!moduleName) return;
+          if (allowed.indexOf(moduleName) === -1) {
+            btn.style.display = 'none';
+          } else {
+            btn.style.display = 'flex';
+          }
+        });
+      } catch (err) {
+        console.error('Error aplicando menus de colaborador:', err);
+      }
+
+      showMessage('Modo colaborador: editor activado', 'success');
+    }
+  } catch (err) {
+    console.error('Error procesando message desde popup:', err);
+  }
+});
 
 // Función para mostrar la aplicación para administradores ADMIN
 async function showAdminApp(user, userEmail) {
@@ -366,6 +438,8 @@ logoutBtn.addEventListener('click', async () => {
     // Limpiar sessionStorage antes de cerrar sesión
     console.log('🧹 Limpiando caché de sessionStorage...');
     sessionStorage.clear();
+    // Reset admin-as-user flag
+    window._adminAccessAsUser = false;
     
     await signOut(auth);
     showMessage('Sesión cerrada correctamente', 'success');
@@ -393,6 +467,8 @@ document.getElementById('app-logout-btn').addEventListener('click', async () => 
     // Limpiar sessionStorage
     console.log('🧹 Limpiando caché de sessionStorage...');
     sessionStorage.clear();
+  // Reset admin-as-user flag
+  window._adminAccessAsUser = false;
     
     // Si hay una sesión de Supabase activa, cerrarla
     if (window._supabaseInstance && window._supabaseAuthCreds?.authenticated) {
@@ -433,38 +509,28 @@ onAuthStateChanged(auth, async (user) => {
     authStateProcessed = true;
     
     try {
-      const privDocRef = doc(db, 'users', user.uid, 'priv', 'data');
-      const privDoc = await getDoc(privDocRef);
-      
-      if (privDoc.exists()) {
-        const role = privDoc.data().role;
-        console.log('Rol obtenido:', role);
-        
-        if (role === 'USER') {
-          console.log('Mostrando app como USER');
-          showUserApp(user, user.email);
-        } else if (role === 'ADMIN') {
-          if (window._supabaseAuthCreds) {
-            console.log('Admin ya autenticado con Supabase, mostrando app');
-            showAdminApp(user, user.email);
-          } else {
-            console.log('Mostrando formulario de auth Supabase para ADMIN');
-            // Mostrar la vista de auth y ocultar las demás
-            authView.classList.remove('hidden');
-            userView.classList.add('hidden');
-            appView.classList.add('hidden');
-            // Mostrar el formulario de Supabase
-            showSupabaseAuthForm();
-          }
+      const role = await getRole(user.uid);
+      console.log('Rol obtenido:', role);
+
+      if (role === 'USER' || role === 'COLABORADOR') {
+        console.log('Mostrando app como', role);
+        showUserApp(user, user.email, role);
+      } else if (role === 'ADMIN') {
+        if (window._supabaseAuthCreds) {
+          console.log('Admin ya autenticado con Supabase, mostrando app');
+          showAdminApp(user, user.email);
         } else {
-          console.error('Rol no reconocido:', role);
-          showMessage('Rol de usuario no válido');
-          authStateProcessed = false;
-          await signOut(auth);
+          console.log('Mostrando formulario de auth Supabase para ADMIN');
+          // Mostrar la vista de auth y ocultar las demás
+          authView.classList.remove('hidden');
+          userView.classList.add('hidden');
+          appView.classList.add('hidden');
+          // Mostrar el formulario de Supabase
+          showSupabaseAuthForm();
         }
       } else {
-        console.error('No se encontró información del usuario');
-        showMessage('Error al cargar información del usuario');
+        console.error('Rol no reconocido:', role);
+        showMessage('Rol de usuario no válido');
         authStateProcessed = false;
         await signOut(auth);
       }

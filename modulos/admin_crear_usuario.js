@@ -1,6 +1,7 @@
 import { auth, db } from '../firebase-config.js';
 import { createUserWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 import { doc, setDoc, collection, addDoc, writeBatch, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { formatDisplayName } from './seguridad.js';
 
 function showMessage(msg, type = 'error') {
   const c = document.getElementById('admin-create-message');
@@ -40,8 +41,16 @@ function renderTableCheckboxes(tables) {
     cb.id = id;
     cb.name = tbl; // usar el nombre de tabla como key
 
+    // Usar nombre legible para mostrar
+    let display = tbl;
+    try {
+      display = formatDisplayName(tbl) || tbl;
+    } catch (err) {
+      console.warn('formatDisplayName fallo para', tbl, err);
+    }
+
     label.appendChild(cb);
-    label.appendChild(document.createTextNode(' ' + tbl));
+    label.appendChild(document.createTextNode(' ' + display));
     wrapper.appendChild(label);
     container.appendChild(wrapper);
   });
@@ -104,8 +113,12 @@ if (form) {
       });
 
       const privDocRef = doc(db, 'users', uid, 'priv', 'data');
+      // Role determined at creation time: if insercionesPermitidas === true -> COLABORADOR
+      const insercionesCb = document.getElementById('insercionesPermitidas');
+      const insercionesValue = !!(insercionesCb && insercionesCb.checked);
+      const assignedRole = insercionesValue ? 'COLABORADOR' : 'USER';
       batch.set(privDocRef, {
-        role: 'USER'
+        role: assignedRole
       });
 
       // 3) Preparar documento de access/tables con booleans de checkboxes
@@ -116,9 +129,8 @@ if (form) {
         accessDoc[key] = !!cb.checked;
       });
 
-      // Añadir insercionesPermitidas
-      const insercionesCb = document.getElementById('insercionesPermitidas');
-      accessDoc['insercionesPermitidas'] = !!(insercionesCb && insercionesCb.checked);
+  // Añadir insercionesPermitidas (es parte del documento de access, pero NO participa en filtrado)
+  accessDoc['insercionesPermitidas'] = insercionesValue;
 
       const accessDocRef = doc(db, 'users', uid, 'access', 'tables');
       batch.set(accessDocRef, accessDoc);
