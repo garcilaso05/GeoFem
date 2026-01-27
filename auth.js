@@ -39,11 +39,9 @@ const authView = document.getElementById('auth-view');
 const userView = document.getElementById('user-view');
 const appView = document.getElementById('app-view');
 const loginForm = document.getElementById('login-form');
-const registerForm = document.getElementById('register-form');
 const logoutBtn = document.getElementById('logout-btn');
 const messageContainer = document.getElementById('message-container');
 const tabLogin = document.getElementById('tab-login');
-const tabRegister = document.getElementById('tab-register');
 
 // Función para mostrar mensajes
 function showMessage(message, type = 'error') {
@@ -55,18 +53,24 @@ function showMessage(message, type = 'error') {
 
 // Función para cambiar entre tabs
 window.showTab = function(tab) {
+  // Si no existe la UI de registro (la hemos movido a otro módulo), solo mostramos el login.
   if (tab === 'login') {
-    loginForm.classList.remove('hidden');
-    registerForm.classList.add('hidden');
-    tabLogin.classList.add('active');
-    tabRegister.classList.remove('active');
+    if (loginForm) loginForm.classList.remove('hidden');
+    if (tabLogin) tabLogin.classList.add('active');
   } else {
-    loginForm.classList.add('hidden');
-    registerForm.classList.remove('hidden');
-    tabLogin.classList.remove('active');
-    tabRegister.classList.add('active');
+    // Intento de mostrar registro: si existe el formulario, mostrarlo; si no, fallback a login
+    const maybeRegister = document.getElementById('register-form');
+    if (maybeRegister) {
+      if (loginForm) loginForm.classList.add('hidden');
+      maybeRegister.classList.remove('hidden');
+      if (tabLogin) tabLogin.classList.remove('active');
+    } else {
+      // No hay registro en esta vista, quedarse en login
+      if (loginForm) loginForm.classList.remove('hidden');
+      if (tabLogin) tabLogin.classList.add('active');
+    }
   }
-  messageContainer.innerHTML = '';
+  if (messageContainer) messageContainer.innerHTML = '';
 };
 
 // Función para cargar módulos
@@ -323,77 +327,9 @@ async function showAdminApp(user, userEmail) {
   console.log('App de admin mostrada correctamente');
 }
 
-// Manejar registro
-registerForm.addEventListener('submit', async (e) => {
-  e.preventDefault();
-  
-  const email = document.getElementById('register-email').value;
-  const password = document.getElementById('register-password').value;
-  const confirmPassword = document.getElementById('register-password-confirm').value;
-
-  if (password !== confirmPassword) {
-    showMessage('Las contraseñas no coinciden');
-    return;
-  }
-
-  try {
-    const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-    const user = userCredential.user;
-    const uid = user.uid;
-
-    const batch = writeBatch(db);
-
-    const userDocRef = doc(db, 'users', uid);
-    batch.set(userDocRef, {
-      _id: uid,
-      email: user.email,
-      createdAt: serverTimestamp()
-    });
-
-    const privDocRef = doc(db, 'users', uid, 'priv', 'data');
-    batch.set(privDocRef, {
-      role: 'USER'
-    });
-
-    await batch.commit();
-
-    const logsRef = collection(db, 'users', uid, 'logs');
-    await addDoc(logsRef, {
-      registro_timestamp: serverTimestamp()
-    });
-
-    // Crear documento de favoritos para gráficos
-    const favoritesDocRef = doc(db, 'users', uid, 'favorites', 'graficos');
-    await setDoc(favoritesDocRef, {
-      TipoGrafico1: null,
-      TablaGrafico1: null,
-      CampoGrafico1: null,
-      TipoGrafico2: null,
-      TablaGrafico2: null,
-      CampoGrafico2: null,
-      TipoGrafico3: null,
-      TablaGrafico3: null,
-      CampoGrafico3: null
-    });
-
-    showMessage('Registro exitoso. Bienvenido!', 'success');
-    registerForm.reset();
-    
-  } catch (error) {
-    console.error('Error en registro:', error);
-    let errorMessage = 'Error al registrar usuario';
-    
-    if (error.code === 'auth/email-already-in-use') {
-      errorMessage = 'El email ya está registrado';
-    } else if (error.code === 'auth/weak-password') {
-      errorMessage = 'La contraseña debe tener al menos 6 caracteres';
-    } else if (error.code === 'auth/invalid-email') {
-      errorMessage = 'Email inválido';
-    }
-    
-    showMessage(errorMessage);
-  }
-});
+// La lógica de registro se ha movido a `modulos/registro.html` + `modulos/registro.js`.
+// Si necesitas volver a exponer el formulario en la vista de autenticación, importa o
+// inserta el módulo correspondiente donde haga falta.
 
 // Manejar inicio de sesión
 loginForm.addEventListener('submit', async (e) => {

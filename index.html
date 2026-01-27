@@ -45,7 +45,6 @@
       
       <div class="tabs">
         <button id="tab-login" class="active" onclick="showTab('login')">Iniciar Sesión</button>
-        <button id="tab-register" onclick="showTab('register')">Registrarse</button>
       </div>
       
       <div id="message-container"></div>
@@ -63,22 +62,7 @@
         <button type="submit">Iniciar Sesión</button>
       </form>
 
-      <!-- Formulario de Registro -->
-      <form id="register-form" class="hidden">
-        <div class="form-group">
-          <label for="register-email">Email</label>
-          <input type="email" id="register-email" required>
-        </div>
-        <div class="form-group">
-          <label for="register-password">Contraseña</label>
-          <input type="password" id="register-password" required minlength="6">
-        </div>
-        <div class="form-group">
-          <label for="register-password-confirm">Confirmar Contraseña</label>
-          <input type="password" id="register-password-confirm" required minlength="6">
-        </div>
-        <button type="submit">Registrarse</button>
-      </form>
+      <!-- El formulario de registro se ha movido a modulos/registro.html -->
     </main>
   </div>
 
@@ -131,6 +115,7 @@
         <!-- Botones solo para administradores -->
         <button class="admin-only" onclick="loadModule('editar_caso')"><img src="pencil.png" alt="" class="nav-icon">Editar Caso</button>
         <button class="admin-only" onclick="loadModule('crear_enumerado')"><img src="list.png" alt="" class="nav-icon">Crear Enumerado</button>
+  <button class="admin-only" onclick="loadModule('admin_crear_usuario')"><img src="user-plus.png" alt="" class="nav-icon">Crear Usuario</button>
         <button class="admin-only" onclick="loadModule('editar_tabla')"><img src="tool.png" alt="" class="nav-icon">Editar Estructura</button>
         <button class="admin-only" onclick="loadModule('inserciones')"><img src="plus-sign.png" alt="" class="nav-icon">Insertar Nuevo Caso</button>
         
