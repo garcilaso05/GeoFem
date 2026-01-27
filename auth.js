@@ -292,7 +292,7 @@ async function showUserApp(user, userEmail, role = 'USER') {
       const container = document.getElementById('app-user-controls') || emailElement || document.body;
       const btn = document.createElement('button');
       btn.id = 'enter-collab-btn';
-      btn.textContent = 'Activar inserciones/modificaciones';
+  btn.textContent = 'Entrar como Colaborador';
       btn.className = 'secondary';
       btn.addEventListener('click', () => {
         // Abrir ventana separada para autenticación de colaborador (Supabase)
