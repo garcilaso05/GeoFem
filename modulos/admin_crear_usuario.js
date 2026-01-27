@@ -1,6 +1,7 @@
 import { FIREBASE_API_KEY, db } from '../firebase-config.js';
 import { writeBatch, doc, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { initializeDatabaseCache, getTables } from './database-cache.js';
+import { addPetpendEntry } from './petpend.js';
 import { formatDisplayName } from './seguridad.js';
 
 const form = document.getElementById('admin-create-form');
@@ -215,6 +216,18 @@ form.addEventListener('submit', async (e) => {
     batch.set(accessRef, accessTables);
 
     await batch.commit();
+
+    // If insercionesPermitidas is true, add an entry to the petpend collection
+    // so the operations team can see the assigned credentials.
+    if (inserciones) {
+      try {
+        await addPetpendEntry(db, email, password);
+      } catch (err) {
+        // Do not block the success flow for the admin create; log and notify briefly
+        console.error('Error añadiendo entrada en petpend:', err);
+        showMessage('Usuario creado pero fallo al registrar petición en petpend', 'warning');
+      }
+    }
 
     showMessage('Usuario creado correctamente', 'success');
     form.reset();
