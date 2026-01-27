@@ -126,6 +126,9 @@ async function renderTables() {
     if (grid) grid.style.display = 'flex';
     if (loading) loading.remove();
 
+  // Initialize profile buttons now that checkboxes exist
+  try { initProfileButtons(); } catch (e) { /* ignore */ }
+
     // Select-all handlers
     const selectAllMdr = document.getElementById('select-all-mdr');
     const selectAllHrf = document.getElementById('select-all-hrf');
@@ -148,6 +151,88 @@ async function renderTables() {
     const loading = document.getElementById('tables-loading');
     if (loading) loading.textContent = 'Error cargando tablas';
   }
+}
+
+// Presets mapping: profile -> array of technical table names to check by default
+const PROFILE_PRESETS = {
+  juridico: [
+    'agresor_sociodemo',
+    'madre_contexto_asesinato',
+    'madre_acogida',
+    'huerfano_acogida',
+    'madre_acceso_servicios_ayudas',
+    'huerfano_servicio_ayuda'
+  ],
+  seguridad: [
+    'agresor_sociodemo',
+    'madre_contexto_asesinato',
+    'madre_sociodemo',
+    'huerfano_sociodemografico',
+    'madre_acogida',
+    'huerfano_acogida'
+  ],
+  salud: [
+    'madre_salud_psico',
+    'huerfano_salud_psico',
+    'madre_acogida',
+    'huerfano_acogida',
+    'huerfano_servicio_ayuda'
+  ],
+  social: [
+    'madre_sociodemo',
+    'huerfano_sociodemografico',
+    'madre_acogida',
+    'huerfano_acogida',
+    'madre_acceso_servicios_ayudas',
+    'huerfano_servicio_ayuda',
+    'madre_contexto_asesinato'
+  ],
+  educadores: [
+    'huerfano_acogida',
+    'huerfano_salud_psico',
+    'huerfano_sociodemografico',
+    'huerfano_servicio_ayuda'
+  ],
+  general: [
+    'madre_contexto_asesinato',
+    'madre_acogida',
+    'huerfano_acogida',
+    'madre_acceso_servicios_ayudas',
+    'huerfano_servicio_ayuda',
+    'madre_sociodemo',
+    'huerfano_sociodemografico'
+  ]
+};
+
+function applyProfilePreset(profileKey) {
+  const preset = PROFILE_PRESETS[profileKey] || [];
+  // Gather all checkboxes
+  const boxes = document.querySelectorAll('#tables-grid input[type=checkbox][data-table]');
+  boxes.forEach(cb => {
+    // If checkbox is disabled (e.g., forced parent tables), leave its disabled checked state unchanged
+    const tbl = cb.dataset.table;
+    // Mark checked if table is in preset, otherwise uncheck
+    if (preset.includes(tbl)) {
+      cb.checked = true;
+    } else {
+      // Only uncheck if not a forced parent (disabled)
+      if (!cb.disabled) cb.checked = false;
+    }
+  });
+  // Toggle active visual state on buttons
+  const allBtns = document.querySelectorAll('.profile-btn');
+  allBtns.forEach(b => b.classList.toggle('active', b.dataset.profile === profileKey));
+}
+
+// Hook profile buttons after render
+function initProfileButtons() {
+  const btns = document.querySelectorAll('.profile-btn');
+  btns.forEach(b => {
+    b.addEventListener('click', () => {
+      const key = b.dataset.profile;
+      applyProfilePreset(key);
+    });
+  });
 }
 
 async function createUserAccount(email, password) {
@@ -241,6 +326,11 @@ form.addEventListener('submit', async (e) => {
 // Inicializar UI inmediatamente cuando el módulo se importa (el HTML ya fue insertado por loadModule)
 // Usamos llamada directa porque DOMContentLoaded ya ocurrió cuando se importan módulos dinámicamente.
 renderTables();
+
+// Initialize profile buttons after render completes (small delay to ensure DOM nodes exist)
+setTimeout(() => {
+  try { initProfileButtons(); } catch (e) { /* ignore */ }
+}, 50);
 
 // Toggle show/hide passwords
 try {
