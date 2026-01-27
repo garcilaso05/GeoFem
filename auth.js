@@ -15,6 +15,114 @@ import {
   getDoc 
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
+// In-memory session access permissions (not persisted)
+window.sessionAccess = window.sessionAccess || null;
+
+/**
+ * Aplicar restricciones de acceso para usuarios NO-ADMIN.
+ * - Lee /users/{uid}/access/tables una única vez (getDoc)
+ * - Guarda permisos en `window.sessionAccess` (memoria)
+ * - Sobrescribe temporalmente `window.dbCache.getTables` y `window.dbCache.getTableColumns`
+ *   para filtrar las tablas a las que el usuario no tiene acceso.
+ * Nota: no se usan listeners en tiempo real y solo realiza una lectura.
+ */
+async function applyAccessRestrictions(user) {
+  try {
+    if (!user || !user.uid) return;
+
+    // Si rol actual es ADMIN o si el admin ha decidido acceder "como usuario", no aplicar restricciones
+    if (window._currentUserRole === 'ADMIN' || window._adminAccessAsUser === true) {
+      console.log('Usuario ADMIN o admin en modo usuario: no se aplican restricciones de acceso');
+      return;
+    }
+
+    // Evitar múltiples lecturas si ya cargado
+    if (window.sessionAccess && window.sessionAccess._loadedForUid === user.uid) {
+      console.log('Permisos de acceso ya cargados en esta sesión');
+      return;
+    }
+
+    const accessRef = doc(db, 'users', user.uid, 'access', 'tables');
+    const accessSnap = await getDoc(accessRef);
+    const accessData = accessSnap.exists() ? accessSnap.data() : {};
+
+    // Normalizar e indicar uid cargado
+    window.sessionAccess = Object.assign({}, accessData, { _loadedForUid: user.uid });
+
+    console.log('Permisos de acceso cargados en memoria:', window.sessionAccess);
+
+    // Si no hay dbCache, no hay nada más que hacer
+    if (!window.dbCache) {
+      console.warn('window.dbCache no disponible; no se pueden filtrar tablas en caché');
+      // Aun así intentar filtrar sessionStorage si existe
+    }
+
+    // Filtrar también la copia persistida en sessionStorage para evitar que al recargar
+    // se restaure la lista completa de tablas incluyendo las denegadas.
+    try {
+      const key = 'geofem_db_cache';
+      const raw = sessionStorage.getItem(key);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        // Filtrar tablas por schema
+        if (parsed.tables) {
+          Object.keys(parsed.tables).forEach(schema => {
+            const arr = parsed.tables[schema] || [];
+            parsed.tables[schema] = arr.filter(tbl => !!window.sessionAccess[tbl]);
+          });
+        }
+        // Filtrar tableColumns
+        if (parsed.tableColumns) {
+          Object.keys(parsed.tableColumns).forEach(schema => {
+            const obj = parsed.tableColumns[schema] || {};
+            const filteredObj = {};
+            Object.keys(obj).forEach(tbl => {
+              if (window.sessionAccess[tbl]) {
+                filteredObj[tbl] = obj[tbl];
+              }
+            });
+            parsed.tableColumns[schema] = filteredObj;
+          });
+        }
+
+        sessionStorage.setItem(key, JSON.stringify(parsed));
+        console.log('Copia de caché en sessionStorage filtrada según permisos de access');
+      }
+    } catch (err) {
+      console.error('Error filtrando sessionStorage cache:', err);
+    }
+
+    // Guardar referencias a las funciones originales (si no guardadas ya)
+    if (!window.dbCache._origGetTables) {
+      window.dbCache._origGetTables = window.dbCache.getTables.bind(window.dbCache);
+    }
+    if (!window.dbCache._origGetTableColumns) {
+      window.dbCache._origGetTableColumns = window.dbCache.getTableColumns.bind(window.dbCache);
+    }
+
+    // Reemplazar getTables para filtrar tablas no permitidas
+    window.dbCache.getTables = function(schema) {
+      const orig = window.dbCache._origGetTables(schema) || [];
+      // Solo permitir tablas que tengan permiso explícito true
+      const filtered = orig.filter(tbl => !!window.sessionAccess[tbl]);
+      return filtered;
+    };
+
+    // Reemplazar getTableColumns para devolver vacío si no tiene permiso
+    window.dbCache.getTableColumns = function(schema, tabla) {
+      if (!window.sessionAccess[tabla]) {
+        return [];
+      }
+      return window.dbCache._origGetTableColumns(schema, tabla) || [];
+    };
+
+    console.log('Interceptors aplicados a window.dbCache (getTables, getTableColumns)');
+
+  } catch (error) {
+    console.error('Error cargando permisos de acceso:', error);
+  }
+}
+
 // Credenciales de Supabase
 const SUPABASE_PUBLIC = {
   url: 'https://rroritvsvpabpkjtiskq.supabase.co',
@@ -143,6 +251,8 @@ function showSupabaseAuthForm() {
   });
   
   document.getElementById('cancel-admin-btn').addEventListener('click', () => {
+    // Marcar que el admin ha decidido acceder como usuario para evitar aplicar restricciones
+    window._adminAccessAsUser = true;
     const user = auth.currentUser;
     if (user) {
       showUserApp(user, user.email);
@@ -268,7 +378,14 @@ async function showUserApp(user, userEmail) {
   } catch (error) {
     console.error('❌ Error inicializando caché:', error);
   }
-  
+
+  // Aplicar restricciones de acceso según permisos (solo para NON-ADMIN)
+  try {
+    await applyAccessRestrictions(user);
+  } catch (err) {
+    console.error('Error aplicando restricciones de acceso:', err);
+  }
+
   setTimeout(() => {
     const firstButton = document.querySelector('#app-nav button:not(.admin-only)');
     if (firstButton) {
@@ -366,6 +483,8 @@ logoutBtn.addEventListener('click', async () => {
     // Limpiar sessionStorage antes de cerrar sesión
     console.log('🧹 Limpiando caché de sessionStorage...');
     sessionStorage.clear();
+    // Reset admin-as-user flag
+    window._adminAccessAsUser = false;
     
     await signOut(auth);
     showMessage('Sesión cerrada correctamente', 'success');
@@ -393,6 +512,8 @@ document.getElementById('app-logout-btn').addEventListener('click', async () => 
     // Limpiar sessionStorage
     console.log('🧹 Limpiando caché de sessionStorage...');
     sessionStorage.clear();
+  // Reset admin-as-user flag
+  window._adminAccessAsUser = false;
     
     // Si hay una sesión de Supabase activa, cerrarla
     if (window._supabaseInstance && window._supabaseAuthCreds?.authenticated) {
