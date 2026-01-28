@@ -6,8 +6,9 @@
  */
 export async function authenticateSupabase(url, key, email, password) {
   try {
-    const { createClient } = await import("https://esm.sh/@supabase/supabase-js");
-    const supabase = createClient(url, key);
+  // Use the local shim which re-exports an ESM build from a CDN.
+  const { createClient } = await import('./supabase-shim.js');
+  const supabase = createClient(url, key);
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) {
       return { success: false, error };

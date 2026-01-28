@@ -251,10 +251,10 @@ async function authenticateSupabase() {
     // Limpiar caché al iniciar sesión
     console.log('🧹 Limpiando caché antes de iniciar sesión...');
     sessionStorage.clear();
-    const { createClient } = await import("https://esm.sh/@supabase/supabase-js");
-    
-    // 1. Crear cliente con ANON KEY (no con el token de acceso)
-    const supabase = createClient(SUPABASE_PUBLIC.url, SUPABASE_PUBLIC.key);
+  // Import createClient via local shim to avoid esm.sh CDN issues
+  const { createClient } = await import('./modulos/supabase-shim.js');
+  // 1. Crear cliente con ANON KEY (no con el token de acceso)
+  const supabase = createClient(SUPABASE_PUBLIC.url, SUPABASE_PUBLIC.key);
     
     // 2. Autenticar - Supabase guarda el JWT automáticamente en localStorage
     const { data, error } = await supabase.auth.signInWithPassword({

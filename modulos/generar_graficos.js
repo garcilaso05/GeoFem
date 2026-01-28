@@ -1,4 +1,4 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js";
+import { createClient } from './supabase-shim.js';
 import { sanitizeIdentifier, formatDisplayName } from "./seguridad.js";
 import { auth, db } from '../firebase-config.js';
 import { doc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";

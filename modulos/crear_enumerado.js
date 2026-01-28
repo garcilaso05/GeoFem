@@ -1,4 +1,4 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js";
+import { createClient } from './supabase-shim.js';
 import { sanitizeIdentifier, escapeSqlValue } from "./seguridad.js";
 
 // Usar una sola instancia global de supabase

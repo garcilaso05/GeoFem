@@ -1,4 +1,4 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js";
+import { createClient } from './supabase-shim.js';
 import { sanitizeIdentifier, formatDisplayName } from "./seguridad.js";
 
 // Variables globales
