@@ -3648,3 +3648,19 @@ button.secondary:hover:not(:disabled) {
     min-height: 500px;
   }
 }
+
+/* Aviso ético y de confidencialidad en la pantalla de login */
+.ethics-note {
+  margin-top: 16px;
+  padding: 12px 14px;
+  background: #fbfbfd;
+  border: 1px solid rgba(40,7,67,0.06);
+  border-left: 4px solid rgba(40,7,67,0.08);
+  border-radius: 8px;
+  color: #444;
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+
+/* Ensure the note is visually secondary to the form */
+.ethics-note { opacity: 0.95; }
