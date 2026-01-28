@@ -1,0 +1,35 @@
+name: Keep Supabase alive
+
+# Why: some free Supabase projects enter a suspended state after a period of inactivity.
+# This workflow makes a lightweight GET request to a small REST endpoint periodically
+# so the project receives activity and avoids sleeping. No sensitive data is stored
+# in the workflow; it reads the ANON key and project id from repository secrets.
+#
+# Note: GitHub Actions cron uses UTC for schedule expressions. Adjust the cron
+# expression below accordingly to match your local timezone if needed.
+
+on:
+  schedule:
+    # Run every 4 days
+    - cron: '0 3 */4 * *'
+  # Allow manual runs from the Actions UI
+  workflow_dispatch: {}
+
+jobs:
+  keep-alive:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Keep Supabase awake
+        env:
+          # Provide these as repository secrets:
+          # SUPABASE_ANON_KEY - the project's anon/public key
+          # SUPABASE_PROJECT_ID - the Supabase project id (the subdomain part)
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
+        run: |
+          # Minimal request to a small table to trigger activity. The command
+          # intentionally mirrors the example provided and does not add extra
+          # logic or dependencies.
+          curl -f "https://${SUPABASE_PROJECT_ID}.supabase.co/rest/v1/keepalive?select=id&limit=1" \
+            -H "apikey: ${SUPABASE_ANON_KEY}" \
+            -H "Authorization: Bearer ${SUPABASE_ANON_KEY}"
