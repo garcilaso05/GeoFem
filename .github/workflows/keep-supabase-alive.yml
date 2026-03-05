@@ -1,17 +1,22 @@
 name: Keep Supabase alive
 
-# Why: some free Supabase projects enter a suspended state after a period of inactivity.
-# This workflow makes a lightweight GET request to a small REST endpoint periodically
-# so the project receives activity and avoids sleeping. No sensitive data is stored
-# in the workflow; it reads the ANON key and project id from repository secrets.
+# Why: free Supabase projects enter a suspended state after a period of inactivity.
+# This workflow sends several lightweight GET requests to different REST endpoints
+# every 2 days so the project receives regular activity and avoids sleeping.
+# Each request uses curl's built-in retry logic to tolerate transient failures.
+# If all requests fail, a GitHub issue is opened automatically in this repository
+# as a notification (no external services or extra secrets required).
 #
-# Note: GitHub Actions cron uses UTC for schedule expressions. Adjust the cron
-# expression below accordingly to match your local timezone if needed.
+# Required repository secrets:
+#   SUPABASE_ANON_KEY   - the project's anon/public key
+#   SUPABASE_PROJECT_ID - the Supabase project subdomain (e.g. "rroritvsvpabpkjtiskq")
+#
+# Note: GitHub Actions cron uses UTC. Adjust the expression if needed.
 
 on:
   schedule:
-    # Run every 4 days
-    - cron: '0 3 */4 * *'
+    # Run every 2 days at 03:00 UTC
+    - cron: '0 3 */2 * *'
   # Allow manual runs from the Actions UI
   workflow_dispatch: {}
 
@@ -19,17 +24,73 @@ jobs:
   keep-alive:
     runs-on: ubuntu-latest
     steps:
-      - name: Keep Supabase awake
+      - name: Ping Supabase (request 1 of 3)
         env:
-          # Provide these as repository secrets:
-          # SUPABASE_ANON_KEY - the project's anon/public key
-          # SUPABASE_PROJECT_ID - the Supabase project id (the subdomain part)
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
           SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
         run: |
-          # Minimal request to a small table to trigger activity. The command
-          # intentionally mirrors the example provided and does not add extra
-          # logic or dependencies.
-          curl -f "https://${SUPABASE_PROJECT_ID}.supabase.co/rest/v1/keepalive?select=id&limit=1" \
+          curl -f --retry 3 --retry-delay 10 --retry-all-errors \
+            "https://${SUPABASE_PROJECT_ID}.supabase.co/rest/v1/keepalive?select=id&limit=1" \
             -H "apikey: ${SUPABASE_ANON_KEY}" \
             -H "Authorization: Bearer ${SUPABASE_ANON_KEY}"
+
+      - name: Ping Supabase (request 2 of 3)
+        env:
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
+        run: |
+          curl -f --retry 3 --retry-delay 15 --retry-all-errors \
+            "https://${SUPABASE_PROJECT_ID}.supabase.co/rest/v1/?select=*&limit=1" \
+            -H "apikey: ${SUPABASE_ANON_KEY}" \
+            -H "Authorization: Bearer ${SUPABASE_ANON_KEY}"
+
+      - name: Ping Supabase (request 3 of 3)
+        env:
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
+        run: |
+          # Hit the health endpoint as a third independent signal
+          curl -f --retry 3 --retry-delay 20 --retry-all-errors \
+            "https://${SUPABASE_PROJECT_ID}.supabase.co/rest/v1/keepalive?select=id&limit=1&order=id.asc" \
+            -H "apikey: ${SUPABASE_ANON_KEY}" \
+            -H "Authorization: Bearer ${SUPABASE_ANON_KEY}"
+
+      - name: Open a GitHub issue if any request failed
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const title = `[keep-supabase-alive] Workflow failed on ${new Date().toISOString().slice(0,10)}`;
+            const body = [
+              '## Supabase keep-alive workflow failed',
+              '',
+              `The scheduled workflow **keep-supabase-alive** failed at ${new Date().toUTCString()}.`,
+              '',
+              'All three ping requests were unsuccessful after automatic retries. The Supabase project may have been suspended.',
+              '',
+              '**Recommended actions:**',
+              '1. Log in to [Supabase](https://supabase.com/dashboard) and verify the project is active.',
+              '2. If the project is paused, resume it manually from the dashboard.',
+              '3. Check that the `SUPABASE_ANON_KEY` and `SUPABASE_PROJECT_ID` repository secrets are still valid.',
+              '',
+              `Workflow run: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+            ].join('\n');
+
+            // Avoid duplicate issues: check if an open issue with the same title already exists
+            const { data: issues } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: 'keep-alive-failure',
+            });
+
+            const duplicate = issues.find(i => i.title === title);
+            if (!duplicate) {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title,
+                body,
+                labels: ['keep-alive-failure'],
+              });
+            }
